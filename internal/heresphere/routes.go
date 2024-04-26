@@ -283,12 +283,13 @@ func (rs routes) genThumbnail(ctx context.Context, sceneID int) error {
 	c := config.GetInstance()
 
 	// Make dir
-	if err := fsutil.EnsureDir(path.Join(c.GetGeneratedPath(), "hsp_screenshot")); err != nil {
+	thumbnailsPath := path.Join(c.GetGeneratedPath(), "hsp_screenshot")
+	if err := fsutil.EnsureDir(thumbnailsPath); err != nil {
 		return err
 	}
 
 	// Skip if exists
-	thumbnailPath := path.Join(c.GetGeneratedPath(), "hsp_screenshot", strconv.Itoa(sceneID))
+	thumbnailPath := path.Join(thumbnailsPath, strconv.Itoa(sceneID))
 	_, err := os.Stat(thumbnailPath)
 	if !os.IsNotExist(err) {
 		return err
