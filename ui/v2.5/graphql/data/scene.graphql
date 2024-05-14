@@ -80,3 +80,19 @@ fragment SceneData on Scene {
     audio_only
   }
 }
+
+fragment SelectSceneData on Scene {
+  id
+  title
+  date
+  code
+  studio {
+    name
+  }
+  files {
+    path
+  }
+  paths {
+    screenshot
+  }
+}
