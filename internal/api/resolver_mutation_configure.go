@@ -553,25 +553,25 @@ func (r *mutationResolver) ConfigureHsp(ctx context.Context, input ConfigHSPInpu
 	c := config.GetInstance()
 
 	if input.Enabled != nil {
-		c.Set(config.HSPDefaultEnabled, *input.Enabled)
+		c.SetBool(config.HSPDefaultEnabled, *input.Enabled)
 	}
 	if input.FavoriteTagID != nil {
-		c.Set(config.HSPFavoriteTag, *input.FavoriteTagID)
+		c.SetInt(config.HSPFavoriteTag, *input.FavoriteTagID)
 	}
 	if input.WriteFavorites != nil {
-		c.Set(config.HSPWriteFavorites, *input.WriteFavorites)
+		c.SetBool(config.HSPWriteFavorites, *input.WriteFavorites)
 	}
 	if input.WriteRatings != nil {
-		c.Set(config.HSPWriteRating, *input.WriteRatings)
+		c.SetBool(config.HSPWriteRating, *input.WriteRatings)
 	}
 	if input.WriteTags != nil {
-		c.Set(config.HSPWriteTags, *input.WriteTags)
+		c.SetBool(config.HSPWriteTags, *input.WriteTags)
 	}
 	if input.WriteDeletes != nil {
-		c.Set(config.HSPWriteDeletes, *input.WriteDeletes)
+		c.SetBool(config.HSPWriteDeletes, *input.WriteDeletes)
 	}
 	if input.WriteHsp != nil {
-		c.Set(config.HSPWriteHsp, *input.WriteHsp)
+		c.SetBool(config.HSPWriteHsp, *input.WriteHsp)
 	}
 
 	if err := c.Write(); err != nil {

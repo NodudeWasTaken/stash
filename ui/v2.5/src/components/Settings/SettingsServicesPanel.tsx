@@ -20,6 +20,7 @@ import {
   StringSetting,
   SelectSetting,
   NumberSetting,
+  Setting,
 } from "./Inputs";
 import { useSettings } from "./context";
 import {
@@ -31,6 +32,7 @@ import {
   faTimes,
   faUserClock,
 } from "@fortawesome/free-solid-svg-icons";
+import { TagSelect } from "../Shared/Select";
 
 const defaultDLNAPort = 1338;
 

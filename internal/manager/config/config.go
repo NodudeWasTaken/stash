@@ -1301,26 +1301,6 @@ func (i *Config) GetUIMinPlayPercent() int {
 	return -1
 }
 
-func (i *Config) GetUIVRTag() string {
-	cfgMap := i.GetUIConfiguration()
-	if val, ok := cfgMap["vrTag"]; ok {
-		return val.(string)
-	}
-
-	return ""
-}
-func (i *Config) GetUIMinPlayPercent() int {
-	cfgMap := i.GetUIConfiguration()
-	if val, ok := cfgMap["minimumPlayPercent"]; ok {
-		i, err := strconv.Atoi(val.(string))
-		if err == nil {
-			return i
-		}
-	}
-
-	return -1
-}
-
 func (i *Config) SetUIConfiguration(v map[string]interface{}) {
 	i.Lock()
 	defer i.Unlock()
