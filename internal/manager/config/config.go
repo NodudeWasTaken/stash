@@ -295,10 +295,6 @@ var (
 	defaultMenuItems         = []string{"scenes", "images", "movies", "markers", "galleries", "performers", "studios", "tags"}
 )
 
-var jsonUnmarshalConf = koanf.UnmarshalConf{
-	Tag: "json",
-}
-
 type MissingConfigError struct {
 	missingFields []string
 }
@@ -503,6 +499,20 @@ func (i *Config) GetConfigFile() string {
 // configuration file.
 func (i *Config) GetConfigPath() string {
 	return filepath.Dir(i.GetConfigFile())
+}
+
+// GetConfigPathAbs returns the path of the directory containing the used
+// configuration file, resolved to an absolute path. Returns the return value
+// of GetConfigPath if the path cannot be made into an absolute path.
+func (i *Config) GetConfigPathAbs() string {
+	p := filepath.Dir(i.GetConfigFile())
+
+	ret, _ := filepath.Abs(p)
+	if ret == "" {
+		return p
+	}
+
+	return ret
 }
 
 // GetDefaultDatabaseFilePath returns the default database filename,
@@ -1467,7 +1477,8 @@ func (i *Config) GetDefaultIdentifySettings() *identify.Options {
 
 	if v.Exists(DefaultIdentifySettings) && v.Get(DefaultIdentifySettings) != nil {
 		var ret identify.Options
-		if err := v.UnmarshalWithConf(DefaultIdentifySettings, &ret, jsonUnmarshalConf); err != nil {
+
+		if err := v.Unmarshal(DefaultIdentifySettings, &ret); err != nil {
 			return nil
 		}
 		return &ret
@@ -1486,7 +1497,7 @@ func (i *Config) GetDefaultScanSettings() *ScanMetadataOptions {
 
 	if v.Exists(DefaultScanSettings) && v.Get(DefaultScanSettings) != nil {
 		var ret ScanMetadataOptions
-		if err := v.UnmarshalWithConf(DefaultScanSettings, &ret, jsonUnmarshalConf); err != nil {
+		if err := v.Unmarshal(DefaultScanSettings, &ret); err != nil {
 			return nil
 		}
 		return &ret
