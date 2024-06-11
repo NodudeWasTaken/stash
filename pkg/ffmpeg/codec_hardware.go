@@ -38,6 +38,7 @@ func (f *FFMpeg) InitHWSupport(ctx context.Context) {
 		VideoCodecR264,
 		VideoCodecIVP9,
 		VideoCodecVVP9,
+		VideoCodecM264,
 	} {
 		var args Args
 		args = append(args, "-hide_banner")
@@ -154,6 +155,16 @@ func (f *FFMpeg) hwDeviceInit(args Args, toCodec VideoCodec, fullhw bool) Args {
 			args = append(args, "-filter_hw_device")
 			args = append(args, "hw")
 		}
+	case VideoCodecM264:
+		if fullhw {
+			args = append(args, "-hwaccel")
+			args = append(args, "videotoolbox")
+			args = append(args, "-hwaccel_output_format")
+			args = append(args, "videotoolbox_vld")
+		} else {
+			args = append(args, "-init_hw_device")
+			args = append(args, "videotoolbox=vt")
+		}
 	}
 
 	return args
@@ -178,7 +189,12 @@ func (f *FFMpeg) hwFilterInit(toCodec VideoCodec, fullhw bool) VideoFilter {
 		VideoCodecIVP9:
 		if !fullhw {
 			videoFilter = videoFilter.Append("hwupload=extra_hw_frames=64")
-			videoFilter = videoFilter.Append("format=qsv")
+			videoFilter = videoFilter.Append("format=nv12")
+		}
+	case VideoCodecM264:
+		if !fullhw {
+			videoFilter = videoFilter.Append("format=nv12")
+			videoFilter = videoFilter.Append("hwupload")
 		}
 	}
 
@@ -256,6 +272,8 @@ func (f *FFMpeg) hwApplyScaleTemplate(sargs string, codec VideoCodec, match []in
 		if fullhw && f.version.major >= 3 && f.version.minor >= 3 { // Added in FFMpeg 3.3
 			template += ":format=nv12"
 		}
+	case VideoCodecM264:
+		template = "scale_vt=$value"
 	default:
 		return VideoFilter(sargs)
 	}
