@@ -350,7 +350,8 @@ func (f *FFMpeg) hwCodecHLSCompatible() *VideoCodec {
 		case VideoCodecN264,
 			VideoCodecI264,
 			VideoCodecV264,
-			VideoCodecR264:
+			VideoCodecR264,
+			VideoCodecM264:
 			return &element
 		}
 	}
@@ -362,7 +363,8 @@ func (f *FFMpeg) hwCodecMP4Compatible() *VideoCodec {
 	for _, element := range f.hwCodecSupport {
 		switch element {
 		case VideoCodecN264,
-			VideoCodecI264:
+			VideoCodecI264,
+			VideoCodecM264:
 			return &element
 		}
 	}
