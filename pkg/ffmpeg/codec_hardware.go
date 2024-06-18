@@ -239,10 +239,10 @@ func templateReplaceScale(input string, template string, match []int, vf *models
 
 		// Fix not divisible by 2 errors
 		if w%2 != 0 {
-			w += 1
+			w++
 		}
 		if h%2 != 0 {
-			h += 1
+			h++
 		}
 
 		template = strings.ReplaceAll(template, "$value", fmt.Sprintf("%d:%d", w, h))
