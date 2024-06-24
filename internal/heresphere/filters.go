@@ -3,10 +3,13 @@ package heresphere
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/mitchellh/mapstructure"
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 func parseObjectFilter(sf *models.SavedFilter) (*models.SceneFilterType, error) {
@@ -48,12 +51,43 @@ func (rs routes) getAllFilters(ctx context.Context) (scenesMap map[string][]int,
 	}
 
 	dfilter, err := func() (*models.SavedFilter, error) {
-		var filter *models.SavedFilter
+		/*var filter *models.SavedFilter
 		err = rs.withReadTxn(ctx, func(ctx context.Context) error {
 			filter, err = rs.FilterFinder.FindDefault(ctx, models.FilterModeScenes)
 			return err
+		})*/
+		mode := models.FilterModeScenes
+		// deprecated - read from the config in the meantime
+		config := config.GetInstance()
+
+		uiConfig := config.GetUIConfiguration()
+		if uiConfig == nil {
+			return nil, nil
+		}
+
+		m := utils.NestedMap(uiConfig)
+		filterRaw, _ := m.Get("defaultFilters." + strings.ToLower(mode.String()))
+
+		if filterRaw == nil {
+			return nil, nil
+		}
+
+		ret := &models.SavedFilter{}
+		d, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+			TagName:          "json",
+			WeaklyTypedInput: true,
+			Result:           ret,
 		})
-		return filter, err
+
+		if err != nil {
+			return nil, err
+		}
+
+		if err := d.Decode(filterRaw); err != nil {
+			return nil, err
+		}
+
+		return ret, nil
 	}()
 
 	if err != nil {
