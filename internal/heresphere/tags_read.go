@@ -140,11 +140,11 @@ func (rs routes) generateMovieTags(ctx context.Context, scene *models.Scene) []H
 	// Generate movie tags
 	tags := []HeresphereVideoTag{}
 
-	if scene.Movies.Loaded() {
-		lst := scene.Movies.List()
+	if scene.Groups.Loaded() {
+		lst := scene.Groups.List()
 		idx := make([]int, 0, len(lst))
 		for _, movie := range lst {
-			idx = append(idx, movie.MovieID)
+			idx = append(idx, movie.GroupID)
 		}
 
 		movies, err := rs.MovieFinder.FindMany(ctx, idx)
@@ -155,7 +155,7 @@ func (rs routes) generateMovieTags(ctx context.Context, scene *models.Scene) []H
 
 		for _, movie := range movies {
 			tags = append(tags, HeresphereVideoTag{
-				Name: fmt.Sprintf("Movie:%s", movie.Name),
+				Name: fmt.Sprintf("Group:%s", movie.Name),
 			})
 		}
 	}

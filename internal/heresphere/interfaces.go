@@ -57,7 +57,7 @@ type galleryFinder interface {
 }
 
 type movieFinder interface {
-	models.MovieFinder
+	models.GroupFinder
 }
 
 type studioFinder interface {

@@ -77,7 +77,7 @@ func GetRoutes(repo models.Repository) chi.Router {
 		FilterFinder:      repo.SavedFilter,
 		PerformerFinder:   repo.Performer,
 		GalleryFinder:     repo.Gallery,
-		MovieFinder:       repo.Movie,
+		MovieFinder:       repo.Group,
 		StudioFinder:      repo.Studio,
 		OCountFinder:      repo.Scene,
 		ViewFinder:        repo.Scene,
