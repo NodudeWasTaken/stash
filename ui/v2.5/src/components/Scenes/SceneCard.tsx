@@ -7,7 +7,7 @@ import { Icon } from "../Shared/Icon";
 import {
   GalleryLink,
   TagLink,
-  MovieLink,
+  GroupLink,
   SceneMarkerLink,
 } from "../Shared/TagLink";
 import { HoverPopover } from "../Shared/HoverPopover";
@@ -143,24 +143,24 @@ const SceneCardPopovers = PatchComponent(
       return <PerformerPopoverButton performers={props.scene.performers} />;
     }
 
-    function maybeRenderMoviePopoverButton() {
-      if (props.scene.movies.length <= 0) return;
+    function maybeRenderGroupPopoverButton() {
+      if (props.scene.groups.length <= 0) return;
 
-      const popoverContent = props.scene.movies.map((sceneMovie) => (
-        <div className="movie-tag-container row" key="movie">
+      const popoverContent = props.scene.groups.map((sceneGroup) => (
+        <div className="group-tag-container row" key={sceneGroup.group.id}>
           <Link
-            to={`/movies/${sceneMovie.movie.id}`}
-            className="movie-tag col m-auto zoom-2"
+            to={`/groups/${sceneGroup.group.id}`}
+            className="group-tag col m-auto zoom-2"
           >
             <img
               className="image-thumbnail"
-              alt={sceneMovie.movie.name ?? ""}
-              src={sceneMovie.movie.front_image_path ?? ""}
+              alt={sceneGroup.group.name ?? ""}
+              src={sceneGroup.group.front_image_path ?? ""}
             />
           </Link>
-          <MovieLink
-            key={sceneMovie.movie.id}
-            movie={sceneMovie.movie}
+          <GroupLink
+            key={sceneGroup.group.id}
+            group={sceneGroup.group}
             className="d-block"
           />
         </div>
@@ -170,11 +170,11 @@ const SceneCardPopovers = PatchComponent(
         <HoverPopover
           placement="bottom"
           content={popoverContent}
-          className="movie-count tag-tooltip"
+          className="group-count tag-tooltip"
         >
           <Button className="minimal">
             <Icon icon={faFilm} />
-            <span>{props.scene.movies.length}</span>
+            <span>{props.scene.groups.length}</span>
           </Button>
         </HoverPopover>
       );
@@ -279,7 +279,7 @@ const SceneCardPopovers = PatchComponent(
         !props.compact &&
         (props.scene.tags.length > 0 ||
           props.scene.performers.length > 0 ||
-          props.scene.movies.length > 0 ||
+          props.scene.groups.length > 0 ||
           props.scene.scene_markers.length > 0 ||
           props.scene?.o_counter ||
           props.scene.galleries.length > 0 ||
@@ -291,7 +291,7 @@ const SceneCardPopovers = PatchComponent(
             <ButtonGroup className="card-popovers">
               {maybeRenderTagPopoverButton()}
               {maybeRenderPerformerPopoverButton()}
-              {maybeRenderMoviePopoverButton()}
+              {maybeRenderGroupPopoverButton()}
               {maybeRenderSceneMarkerPopoverButton()}
               {maybeRenderOCounter()}
               {maybeRenderGallery()}

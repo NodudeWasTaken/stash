@@ -81,13 +81,13 @@ export function getAggregateTagIds(state: { tags: IHasID[] }[]) {
   return getAggregateIds(sortedLists);
 }
 
-interface IMovie {
-  movie: IHasID;
+interface IGroup {
+  group: IHasID;
 }
 
-export function getAggregateMovieIds(state: { movies: IMovie[] }[]) {
+export function getAggregateGroupIds(state: { groups: IGroup[] }[]) {
   const sortedLists = state.map((o) =>
-    o.movies.map((oo) => oo.movie.id).sort()
+    o.groups.map((oo) => oo.group.id).sort()
   );
   return getAggregateIds(sortedLists);
 }

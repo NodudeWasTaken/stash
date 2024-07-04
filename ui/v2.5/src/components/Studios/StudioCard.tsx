@@ -142,15 +142,15 @@ export const StudioCard: React.FC<IProps> = ({
     );
   }
 
-  function maybeRenderMoviesPopoverButton() {
-    if (!studio.movie_count) return;
+  function maybeRenderGroupsPopoverButton() {
+    if (!studio.group_count) return;
 
     return (
       <PopoverCountButton
-        className="movie-count"
-        type="movie"
-        count={studio.movie_count}
-        url={NavUtils.makeStudioMoviesUrl(studio)}
+        className="group-count"
+        type="group"
+        count={studio.group_count}
+        url={NavUtils.makeStudioGroupsUrl(studio)}
       />
     );
   }
@@ -190,7 +190,7 @@ export const StudioCard: React.FC<IProps> = ({
       studio.scene_count ||
       studio.image_count ||
       studio.gallery_count ||
-      studio.movie_count ||
+      studio.group_count ||
       studio.performer_count ||
       studio.tags.length > 0
     ) {
@@ -199,7 +199,7 @@ export const StudioCard: React.FC<IProps> = ({
           <hr />
           <ButtonGroup className="card-popovers">
             {maybeRenderScenesPopoverButton()}
-            {maybeRenderMoviesPopoverButton()}
+            {maybeRenderGroupsPopoverButton()}
             {maybeRenderImagesPopoverButton()}
             {maybeRenderGalleriesPopoverButton()}
             {maybeRenderPerformersPopoverButton()}
@@ -236,6 +236,8 @@ export const StudioCard: React.FC<IProps> = ({
         <FavoriteIcon
           favorite={studio.favorite}
           onToggleFavorite={(v) => onToggleFavorite(v)}
+          size="2x"
+          className="hide-not-favorite"
         />
       }
       popovers={maybeRenderPopoverButtonGroup()}

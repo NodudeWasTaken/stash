@@ -147,7 +147,10 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 		qb.performersCriterionHandler(sceneFilter.Performers),
 		qb.performerCountCriterionHandler(sceneFilter.PerformerCount),
 		studioCriterionHandler(sceneTable, sceneFilter.Studios),
-		qb.moviesCriterionHandler(sceneFilter.Movies),
+
+		qb.groupsCriterionHandler(sceneFilter.Groups),
+		qb.groupsCriterionHandler(sceneFilter.Movies),
+
 		qb.galleriesCriterionHandler(sceneFilter.Galleries),
 		qb.performerTagsCriterionHandler(sceneFilter.PerformerTags),
 		qb.performerFavoriteCriterionHandler(sceneFilter.PerformerFavorite),
@@ -192,10 +195,10 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 
 		&relatedFilterHandler{
 			relatedIDCol:   "movies_scenes.movie_id",
-			relatedRepo:    movieRepository.repository,
-			relatedHandler: &movieFilterHandler{sceneFilter.MoviesFilter},
+			relatedRepo:    groupRepository.repository,
+			relatedHandler: &groupFilterHandler{sceneFilter.MoviesFilter},
 			joinFn: func(f *filterBuilder) {
-				sceneRepository.movies.innerJoin(f, "", "scenes.id")
+				sceneRepository.groups.innerJoin(f, "", "scenes.id")
 			},
 		},
 
@@ -317,7 +320,7 @@ func (qb *sceneFilterHandler) isMissingCriterionHandler(isMissing *string) crite
 			case "studio":
 				f.addWhere("scenes.studio_id IS NULL")
 			case "movie":
-				sceneRepository.movies.join(f, "movies_join", "scenes.id")
+				sceneRepository.groups.join(f, "movies_join", "scenes.id")
 				f.addWhere("movies_join.scene_id IS NULL")
 			case "performers":
 				sceneRepository.performers.join(f, "performers_join", "scenes.id")
@@ -480,12 +483,12 @@ func (qb *sceneFilterHandler) performerAgeCriterionHandler(performerAge *models.
 	}
 }
 
-func (qb *sceneFilterHandler) moviesCriterionHandler(movies *models.MultiCriterionInput) criterionHandlerFunc {
+func (qb *sceneFilterHandler) groupsCriterionHandler(movies *models.MultiCriterionInput) criterionHandlerFunc {
 	addJoinsFunc := func(f *filterBuilder) {
-		sceneRepository.movies.join(f, "", "scenes.id")
+		sceneRepository.groups.join(f, "", "scenes.id")
 		f.addLeftJoin("movies", "", "movies_scenes.movie_id = movies.id")
 	}
-	h := qb.getMultiCriterionHandlerBuilder(movieTable, moviesScenesTable, "movie_id", addJoinsFunc)
+	h := qb.getMultiCriterionHandlerBuilder(groupTable, groupsScenesTable, "movie_id", addJoinsFunc)
 	return h.handler(movies)
 }
 

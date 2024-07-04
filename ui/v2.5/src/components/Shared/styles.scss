@@ -536,7 +536,10 @@ button.btn.favorite-button {
   &.not-favorite {
     color: rgba(191, 204, 214, 0.5);
     filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
-    opacity: 0;
+
+    &.hide-not-favorite {
+      opacity: 0;
+    }
   }
 
   &.favorite {
@@ -595,4 +598,13 @@ button.btn.favorite-button {
 
 .external-links-button {
   display: inline-block;
+}
+
+.scraper-menu .dropdown-menu {
+  min-width: 250px;
+
+  .dropdown-divider {
+    border-top-color: $textfield-bg;
+    margin: 0;
+  }
 }
