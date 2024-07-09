@@ -1,8 +1,9 @@
-import { Button, Tabs, Tab, Dropdown } from "react-bootstrap";
-import React, { useEffect, useState } from "react";
-import { useParams, useHistory } from "react-router-dom";
+import { Tabs, Tab, Dropdown } from "react-bootstrap";
+import React, { useEffect, useMemo, useState } from "react";
+import { useHistory, Redirect, RouteComponentProps } from "react-router-dom";
 import { FormattedMessage, useIntl } from "react-intl";
 import { Helmet } from "react-helmet";
+import cx from "classnames";
 import Mousetrap from "mousetrap";
 
 import * as GQL from "src/core/generated-graphql";
@@ -12,7 +13,6 @@ import {
   useTagDestroy,
   mutateMetadataAutoTag,
 } from "src/core/StashService";
-import { Counter } from "src/components/Shared/Counter";
 import { DetailsEditNavbar } from "src/components/Shared/DetailsEditNavbar";
 import { ErrorMessage } from "src/components/Shared/ErrorMessage";
 import { ModalComponent } from "src/components/Shared/Modal";
@@ -25,8 +25,9 @@ import { TagScenesPanel } from "./TagScenesPanel";
 import { TagMarkersPanel } from "./TagMarkersPanel";
 import { TagImagesPanel } from "./TagImagesPanel";
 import { TagPerformersPanel } from "./TagPerformersPanel";
+import { TagStudiosPanel } from "./TagStudiosPanel";
 import { TagGalleriesPanel } from "./TagGalleriesPanel";
-import { TagDetailsPanel } from "./TagDetailsPanel";
+import { CompressedTagDetailsPanel, TagDetailsPanel } from "./TagDetailsPanel";
 import { TagEditPanel } from "./TagEditPanel";
 import { TagMergeModal } from "./TagMergeDialog";
 import {
@@ -34,29 +35,215 @@ import {
   faSignOutAlt,
   faTrashAlt,
 } from "@fortawesome/free-solid-svg-icons";
-import { IUIConfig } from "src/core/config";
+import { DetailImage } from "src/components/Shared/DetailImage";
+import { useLoadStickyHeader } from "src/hooks/detailsPanel";
+import { useScrollToTopOnMount } from "src/hooks/scrollToTop";
+import { TagGroupsPanel } from "./TagGroupsPanel";
+import { BackgroundImage } from "src/components/Shared/DetailsPage/BackgroundImage";
+import {
+  TabTitleCounter,
+  useTabKey,
+} from "src/components/Shared/DetailsPage/Tabs";
+import { DetailTitle } from "src/components/Shared/DetailsPage/DetailTitle";
+import { ExpandCollapseButton } from "src/components/Shared/CollapseButton";
+import { FavoriteIcon } from "src/components/Shared/FavoriteIcon";
+import { AliasList } from "src/components/Shared/DetailsPage/AliasList";
+import { HeaderImage } from "src/components/Shared/DetailsPage/HeaderImage";
 
 interface IProps {
   tag: GQL.TagDataFragment;
+  tabKey?: TabKey;
 }
 
-interface ITabParams {
+interface ITagParams {
+  id: string;
   tab?: string;
 }
 
-const TagPage: React.FC<IProps> = ({ tag }) => {
+const validTabs = [
+  "default",
+  "scenes",
+  "images",
+  "galleries",
+  "groups",
+  "markers",
+  "performers",
+  "studios",
+] as const;
+type TabKey = (typeof validTabs)[number];
+
+function isTabKey(tab: string): tab is TabKey {
+  return validTabs.includes(tab as TabKey);
+}
+
+const TagTabs: React.FC<{
+  tabKey?: TabKey;
+  tag: GQL.TagDataFragment;
+  abbreviateCounter: boolean;
+  showAllCounts?: boolean;
+}> = ({ tabKey, tag, abbreviateCounter, showAllCounts = false }) => {
+  const sceneCount =
+    (showAllCounts ? tag.scene_count_all : tag.scene_count) ?? 0;
+  const imageCount =
+    (showAllCounts ? tag.image_count_all : tag.image_count) ?? 0;
+  const galleryCount =
+    (showAllCounts ? tag.gallery_count_all : tag.gallery_count) ?? 0;
+  const groupCount =
+    (showAllCounts ? tag.group_count_all : tag.group_count) ?? 0;
+  const sceneMarkerCount =
+    (showAllCounts ? tag.scene_marker_count_all : tag.scene_marker_count) ?? 0;
+  const performerCount =
+    (showAllCounts ? tag.performer_count_all : tag.performer_count) ?? 0;
+  const studioCount =
+    (showAllCounts ? tag.studio_count_all : tag.studio_count) ?? 0;
+
+  const populatedDefaultTab = useMemo(() => {
+    let ret: TabKey = "scenes";
+    if (sceneCount == 0) {
+      if (imageCount != 0) {
+        ret = "images";
+      } else if (galleryCount != 0) {
+        ret = "galleries";
+      } else if (groupCount != 0) {
+        ret = "groups";
+      } else if (sceneMarkerCount != 0) {
+        ret = "markers";
+      } else if (performerCount != 0) {
+        ret = "performers";
+      } else if (studioCount != 0) {
+        ret = "studios";
+      }
+    }
+
+    return ret;
+  }, [
+    sceneCount,
+    imageCount,
+    galleryCount,
+    sceneMarkerCount,
+    performerCount,
+    studioCount,
+    groupCount,
+  ]);
+
+  const { setTabKey } = useTabKey({
+    tabKey,
+    validTabs,
+    defaultTabKey: populatedDefaultTab,
+    baseURL: `/tags/${tag.id}`,
+  });
+
+  return (
+    <Tabs
+      id="tag-tabs"
+      mountOnEnter
+      unmountOnExit
+      activeKey={tabKey}
+      onSelect={setTabKey}
+    >
+      <Tab
+        eventKey="scenes"
+        title={
+          <TabTitleCounter
+            messageID="scenes"
+            count={sceneCount}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <TagScenesPanel active={tabKey === "scenes"} tag={tag} />
+      </Tab>
+      <Tab
+        eventKey="images"
+        title={
+          <TabTitleCounter
+            messageID="images"
+            count={imageCount}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <TagImagesPanel active={tabKey === "images"} tag={tag} />
+      </Tab>
+      <Tab
+        eventKey="galleries"
+        title={
+          <TabTitleCounter
+            messageID="galleries"
+            count={galleryCount}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <TagGalleriesPanel active={tabKey === "galleries"} tag={tag} />
+      </Tab>
+      <Tab
+        eventKey="groups"
+        title={
+          <TabTitleCounter
+            messageID="groups"
+            count={groupCount}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <TagGroupsPanel active={tabKey === "groups"} tag={tag} />
+      </Tab>
+      <Tab
+        eventKey="markers"
+        title={
+          <TabTitleCounter
+            messageID="markers"
+            count={sceneMarkerCount}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <TagMarkersPanel active={tabKey === "markers"} tag={tag} />
+      </Tab>
+      <Tab
+        eventKey="performers"
+        title={
+          <TabTitleCounter
+            messageID="performers"
+            count={performerCount}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <TagPerformersPanel active={tabKey === "performers"} tag={tag} />
+      </Tab>
+      <Tab
+        eventKey="studios"
+        title={
+          <TabTitleCounter
+            messageID="studios"
+            count={studioCount}
+            abbreviateCounter={abbreviateCounter}
+          />
+        }
+      >
+        <TagStudiosPanel active={tabKey === "studios"} tag={tag} />
+      </Tab>
+    </Tabs>
+  );
+};
+
+const TagPage: React.FC<IProps> = ({ tag, tabKey }) => {
   const history = useHistory();
   const Toast = useToast();
   const intl = useIntl();
 
-  const [collapsed, setCollapsed] = useState(false);
-
   // Configuration settings
   const { configuration } = React.useContext(ConfigurationContext);
-  const abbreviateCounter =
-    (configuration?.ui as IUIConfig)?.abbreviateCounters ?? false;
+  const uiConfig = configuration?.ui;
+  const abbreviateCounter = uiConfig?.abbreviateCounters ?? false;
+  const enableBackgroundImage = uiConfig?.enableTagBackgroundImage ?? false;
+  const showAllDetails = uiConfig?.showAllDetails ?? true;
+  const compactExpandedDetails = uiConfig?.compactExpandedDetails ?? false;
 
-  const { tab = "scenes" } = useParams<ITabParams>();
+  const [collapsed, setCollapsed] = useState<boolean>(!showAllDetails);
+  const loadStickyHeader = useLoadStickyHeader();
 
   // Editing state
   const [isEditing, setIsEditing] = useState<boolean>(false);
@@ -70,27 +257,44 @@ const TagPage: React.FC<IProps> = ({ tag }) => {
   const [updateTag] = useTagUpdate();
   const [deleteTag] = useTagDestroy({ id: tag.id });
 
-  const activeTabKey =
-    tab === "markers" ||
-    tab === "images" ||
-    tab === "performers" ||
-    tab === "galleries"
-      ? tab
-      : "scenes";
-  const setActiveTabKey = (newTab: string | null) => {
-    if (tab !== newTab) {
-      const tabParam = newTab === "scenes" ? "" : `/${newTab}`;
-      history.replace(`/tags/${tag.id}${tabParam}`);
+  const showAllCounts = uiConfig?.showChildTagContent;
+
+  const tagImage = useMemo(() => {
+    let existingImage = tag.image_path;
+    if (isEditing) {
+      if (image === null && existingImage) {
+        const tagImageURL = new URL(existingImage);
+        tagImageURL.searchParams.set("default", "true");
+        return tagImageURL.toString();
+      } else if (image) {
+        return image;
+      }
     }
-  };
+
+    return existingImage;
+  }, [isEditing, tag.image_path, image]);
+
+  function setFavorite(v: boolean) {
+    if (tag.id) {
+      updateTag({
+        variables: {
+          input: {
+            id: tag.id,
+            favorite: v,
+          },
+        },
+      });
+    }
+  }
 
   // set up hotkeys
   useEffect(() => {
-    Mousetrap.bind("e", () => setIsEditing(true));
+    Mousetrap.bind("e", () => toggleEditing());
     Mousetrap.bind("d d", () => {
-      onDelete();
+      setIsDeleteAlertOpen(true);
     });
     Mousetrap.bind(",", () => setCollapsed(!collapsed));
+    Mousetrap.bind("f", () => setFavorite(!tag.favorite));
 
     return () => {
       if (isEditing) {
@@ -100,34 +304,36 @@ const TagPage: React.FC<IProps> = ({ tag }) => {
       Mousetrap.unbind("e");
       Mousetrap.unbind("d d");
       Mousetrap.unbind(",");
+      Mousetrap.unbind("f");
     };
   });
 
   async function onSave(input: GQL.TagCreateInput) {
-    try {
-      const oldRelations = {
-        parents: tag.parents ?? [],
-        children: tag.children ?? [],
-      };
-      const result = await updateTag({
-        variables: {
-          input: {
-            id: tag.id,
-            ...input,
-          },
+    const oldRelations = {
+      parents: tag.parents ?? [],
+      children: tag.children ?? [],
+    };
+    const result = await updateTag({
+      variables: {
+        input: {
+          id: tag.id,
+          ...input,
         },
+      },
+    });
+    if (result.data?.tagUpdate) {
+      toggleEditing(false);
+      const updated = result.data.tagUpdate;
+      tagRelationHook(updated, oldRelations, {
+        parents: updated.parents,
+        children: updated.children,
       });
-      if (result.data?.tagUpdate) {
-        setIsEditing(false);
-        const updated = result.data.tagUpdate;
-        tagRelationHook(updated, oldRelations, {
-          parents: updated.parents,
-          children: updated.children,
-        });
-        return updated.id;
-      }
-    } catch (e) {
-      Toast.error(e);
+      Toast.success(
+        intl.formatMessage(
+          { id: "toast.updated_entity" },
+          { entity: intl.formatMessage({ id: "tag" }).toLocaleLowerCase() }
+        )
+      );
     }
   }
 
@@ -135,9 +341,7 @@ const TagPage: React.FC<IProps> = ({ tag }) => {
     if (!tag.id) return;
     try {
       await mutateMetadataAutoTag({ tags: [tag.id] });
-      Toast.success({
-        content: intl.formatMessage({ id: "toast.started_auto_tagging" }),
-      });
+      Toast.success(intl.formatMessage({ id: "toast.started_auto_tagging" }));
     } catch (e) {
       Toast.error(e);
     }
@@ -188,29 +392,18 @@ const TagPage: React.FC<IProps> = ({ tag }) => {
     );
   }
 
-  function onToggleEdit() {
-    setIsEditing(!isEditing);
+  function toggleEditing(value?: boolean) {
+    if (value !== undefined) {
+      setIsEditing(value);
+    } else {
+      setIsEditing((e) => !e);
+    }
     setImage(undefined);
-  }
-
-  function renderImage() {
-    let tagImage = tag.image_path;
-    if (isEditing) {
-      if (image === null) {
-        tagImage = `${tagImage}&default=true`;
-      } else if (image) {
-        tagImage = image;
-      }
-    }
-
-    if (tagImage) {
-      return <img className="logo" alt={tag.name} src={tagImage} />;
-    }
   }
 
   function renderMergeButton() {
     return (
-      <Dropdown drop="up">
+      <Dropdown>
         <Dropdown.Toggle variant="secondary">
           <FormattedMessage id="actions.merge" />
           ...
@@ -249,165 +442,133 @@ const TagPage: React.FC<IProps> = ({ tag }) => {
     );
   }
 
-  function getCollapseButtonText() {
-    return collapsed ? ">" : "<";
-  }
+  const headerClassName = cx("detail-header", {
+    edit: isEditing,
+    collapsed,
+    "full-width": !collapsed && !compactExpandedDetails,
+  });
 
   return (
-    <>
+    <div id="tag-page" className="row">
       <Helmet>
         <title>{tag.name}</title>
       </Helmet>
-      <div className="row">
-        <div
-          className={`tag-details details-tab ${collapsed ? "collapsed" : ""}`}
-        >
-          <div className="text-center logo-container">
-            {encodingImage ? (
-              <LoadingIndicator message="Encoding image..." />
-            ) : (
-              renderImage()
+
+      <div className={headerClassName}>
+        <BackgroundImage
+          imagePath={tag.image_path ?? undefined}
+          show={enableBackgroundImage && !isEditing}
+        />
+        <div className="detail-container">
+          <HeaderImage encodingImage={encodingImage}>
+            {tagImage && (
+              <DetailImage className="logo" alt={tag.name} src={tagImage} />
             )}
-            <h2>{tag.name}</h2>
-            <p>{tag.description}</p>
+          </HeaderImage>
+          <div className="row">
+            <div className="tag-head col">
+              <DetailTitle name={tag.name} classNamePrefix="tag">
+                {!isEditing && (
+                  <ExpandCollapseButton
+                    collapsed={collapsed}
+                    setCollapsed={(v) => setCollapsed(v)}
+                  />
+                )}
+                <span className="name-icons">
+                  <FavoriteIcon
+                    favorite={tag.favorite}
+                    onToggleFavorite={(v) => setFavorite(v)}
+                  />
+                </span>
+              </DetailTitle>
+
+              <AliasList aliases={tag.aliases} />
+              {!isEditing && (
+                <TagDetailsPanel
+                  tag={tag}
+                  fullWidth={!collapsed && !compactExpandedDetails}
+                />
+              )}
+              {isEditing ? (
+                <TagEditPanel
+                  tag={tag}
+                  onSubmit={onSave}
+                  onCancel={() => toggleEditing()}
+                  onDelete={onDelete}
+                  setImage={setImage}
+                  setEncodingImage={setEncodingImage}
+                />
+              ) : (
+                <DetailsEditNavbar
+                  objectName={tag.name}
+                  isNew={false}
+                  isEditing={isEditing}
+                  onToggleEdit={() => toggleEditing()}
+                  onSave={() => {}}
+                  onImageChange={() => {}}
+                  onClearImage={() => {}}
+                  onAutoTag={onAutoTag}
+                  autoTagDisabled={tag.ignore_auto_tag}
+                  onDelete={onDelete}
+                  classNames="mb-2"
+                  customButtons={renderMergeButton()}
+                />
+              )}
+            </div>
           </div>
-          {!isEditing ? (
-            <>
-              <TagDetailsPanel tag={tag} />
-              {/* HACK - this is also rendered in the TagEditPanel */}
-              <DetailsEditNavbar
-                objectName={tag.name}
-                isNew={false}
-                isEditing={isEditing}
-                onToggleEdit={onToggleEdit}
-                onSave={() => {}}
-                onImageChange={() => {}}
-                onClearImage={() => {}}
-                onAutoTag={onAutoTag}
-                onDelete={onDelete}
-                classNames="mb-2"
-                customButtons={renderMergeButton()}
-              />
-            </>
-          ) : (
-            <TagEditPanel
-              tag={tag}
-              onSubmit={onSave}
-              onCancel={onToggleEdit}
-              onDelete={onDelete}
-              setImage={setImage}
-              setEncodingImage={setEncodingImage}
-            />
-          )}
         </div>
-        <div className="details-divider d-none d-xl-block">
-          <Button onClick={() => setCollapsed(!collapsed)}>
-            {getCollapseButtonText()}
-          </Button>
-        </div>
-        <div className={`col content-container ${collapsed ? "expanded" : ""}`}>
-          <Tabs
-            id="tag-tabs"
-            mountOnEnter
-            unmountOnExit
-            activeKey={activeTabKey}
-            onSelect={setActiveTabKey}
-          >
-            <Tab
-              eventKey="scenes"
-              title={
-                <React.Fragment>
-                  {intl.formatMessage({ id: "scenes" })}
-                  <Counter
-                    abbreviateCounter={abbreviateCounter}
-                    count={tag.scene_count ?? 0}
-                  />
-                </React.Fragment>
-              }
-            >
-              <TagScenesPanel active={activeTabKey == "scenes"} tag={tag} />
-            </Tab>
-            <Tab
-              eventKey="images"
-              title={
-                <React.Fragment>
-                  {intl.formatMessage({ id: "images" })}
-                  <Counter
-                    abbreviateCounter={abbreviateCounter}
-                    count={tag.image_count ?? 0}
-                  />
-                </React.Fragment>
-              }
-            >
-              <TagImagesPanel active={activeTabKey == "images"} tag={tag} />
-            </Tab>
-            <Tab
-              eventKey="galleries"
-              title={
-                <React.Fragment>
-                  {intl.formatMessage({ id: "galleries" })}
-                  <Counter
-                    abbreviateCounter={abbreviateCounter}
-                    count={tag.gallery_count ?? 0}
-                  />
-                </React.Fragment>
-              }
-            >
-              <TagGalleriesPanel
-                active={activeTabKey == "galleries"}
-                tag={tag}
-              />
-            </Tab>
-            <Tab
-              eventKey="markers"
-              title={
-                <React.Fragment>
-                  {intl.formatMessage({ id: "markers" })}
-                  <Counter
-                    abbreviateCounter={abbreviateCounter}
-                    count={tag.scene_marker_count ?? 0}
-                  />
-                </React.Fragment>
-              }
-            >
-              <TagMarkersPanel active={activeTabKey == "markers"} tag={tag} />
-            </Tab>
-            <Tab
-              eventKey="performers"
-              title={
-                <React.Fragment>
-                  {intl.formatMessage({ id: "performers" })}
-                  <Counter
-                    abbreviateCounter={abbreviateCounter}
-                    count={tag.performer_count ?? 0}
-                  />
-                </React.Fragment>
-              }
-            >
-              <TagPerformersPanel
-                active={activeTabKey == "performers"}
-                tag={tag}
-              />
-            </Tab>
-          </Tabs>
-        </div>
-        {renderDeleteAlert()}
-        {renderMergeDialog()}
       </div>
-    </>
+
+      {!isEditing && loadStickyHeader && (
+        <CompressedTagDetailsPanel tag={tag} />
+      )}
+
+      <div className="detail-body">
+        <div className="tag-body">
+          <div className="tag-tabs">
+            {!isEditing && (
+              <TagTabs
+                tabKey={tabKey}
+                tag={tag}
+                abbreviateCounter={abbreviateCounter}
+                showAllCounts={showAllCounts}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+      {renderDeleteAlert()}
+      {renderMergeDialog()}
+    </div>
   );
 };
 
-const TagLoader: React.FC = () => {
-  const { id } = useParams<{ id?: string }>();
-  const { data, loading, error } = useFindTag(id ?? "");
+const TagLoader: React.FC<RouteComponentProps<ITagParams>> = ({
+  location,
+  match,
+}) => {
+  const { id, tab } = match.params;
+  const { data, loading, error } = useFindTag(id);
+
+  useScrollToTopOnMount();
 
   if (loading) return <LoadingIndicator />;
   if (error) return <ErrorMessage error={error.message} />;
   if (!data?.findTag)
     return <ErrorMessage error={`No tag found with id ${id}.`} />;
 
-  return <TagPage tag={data.findTag} />;
+  if (tab && !isTabKey(tab)) {
+    return (
+      <Redirect
+        to={{
+          ...location,
+          pathname: `/tags/${id}`,
+        }}
+      />
+    );
+  }
+
+  return <TagPage tag={data.findTag} tabKey={tab as TabKey | undefined} />;
 };
 
 export default TagLoader;

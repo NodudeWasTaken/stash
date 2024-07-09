@@ -11,10 +11,10 @@ import (
 )
 
 type GenerateInteractiveHeatmapSpeedTask struct {
+	repository          models.Repository
 	Scene               models.Scene
 	Overwrite           bool
 	fileNamingAlgorithm models.HashAlgorithm
-	TxnManager          Repository
 }
 
 func (t *GenerateInteractiveHeatmapSpeedTask) GetDescription() string {
@@ -22,7 +22,7 @@ func (t *GenerateInteractiveHeatmapSpeedTask) GetDescription() string {
 }
 
 func (t *GenerateInteractiveHeatmapSpeedTask) Start(ctx context.Context) {
-	if !t.shouldGenerate() {
+	if !t.required() {
 		return
 	}
 
@@ -42,23 +42,29 @@ func (t *GenerateInteractiveHeatmapSpeedTask) Start(ctx context.Context) {
 
 	median := generator.InteractiveSpeed
 
-	if err := t.TxnManager.WithTxn(ctx, func(ctx context.Context) error {
+	r := t.repository
+	if err := r.WithTxn(ctx, func(ctx context.Context) error {
 		primaryFile := t.Scene.Files.Primary()
 		primaryFile.InteractiveSpeed = &median
-		qb := t.TxnManager.File
+		qb := r.File
 		return qb.Update(ctx, primaryFile)
 	}); err != nil && ctx.Err() == nil {
 		logger.Error(err.Error())
 	}
 }
 
-func (t *GenerateInteractiveHeatmapSpeedTask) shouldGenerate() bool {
+func (t *GenerateInteractiveHeatmapSpeedTask) required() bool {
 	primaryFile := t.Scene.Files.Primary()
 	if primaryFile == nil || !primaryFile.Interactive {
 		return false
 	}
+
+	if t.Overwrite {
+		return true
+	}
+
 	sceneHash := t.Scene.GetHash(t.fileNamingAlgorithm)
-	return !t.doesHeatmapExist(sceneHash) || primaryFile.InteractiveSpeed == nil || t.Overwrite
+	return !t.doesHeatmapExist(sceneHash) || primaryFile.InteractiveSpeed == nil
 }
 
 func (t *GenerateInteractiveHeatmapSpeedTask) doesHeatmapExist(sceneChecksum string) bool {

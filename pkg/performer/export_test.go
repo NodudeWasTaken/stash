@@ -29,7 +29,6 @@ const (
 	ethnicity      = "ethnicity"
 	eyeColor       = "eyeColor"
 	fakeTits       = "fakeTits"
-	gender         = "gender"
 	instagram      = "instagram"
 	measurements   = "measurements"
 	piercings      = "piercings"
@@ -42,10 +41,15 @@ const (
 )
 
 var (
-	aliases = []string{"alias1", "alias2"}
-	rating  = 5
-	height  = 123
-	weight  = 60
+	genderEnum      = models.GenderEnumFemale
+	gender          = genderEnum.String()
+	aliases         = []string{"alias1", "alias2"}
+	rating          = 5
+	height          = 123
+	weight          = 60
+	penisLength     = 1.23
+	circumcisedEnum = models.CircumisedEnumCut
+	circumcised     = circumcisedEnum.String()
 )
 
 var imageBytes = []byte("imageBytes")
@@ -60,8 +64,8 @@ var stashIDs = []models.StashID{
 
 const image = "aW1hZ2VCeXRlcw=="
 
-var birthDate = models.NewDate("2001-01-01")
-var deathDate = models.NewDate("2021-02-02")
+var birthDate, _ = models.ParseDate("2001-01-01")
+var deathDate, _ = models.ParseDate("2021-02-02")
 
 var (
 	createTime = time.Date(2001, 01, 01, 0, 0, 0, 0, time.Local)
@@ -73,7 +77,7 @@ func createFullPerformer(id int, name string) *models.Performer {
 		ID:             id,
 		Name:           name,
 		Disambiguation: disambiguation,
-		URL:            url,
+		URLs:           models.NewRelatedStrings([]string{url, twitter, instagram}),
 		Aliases:        models.NewRelatedStrings(aliases),
 		Birthdate:      &birthDate,
 		CareerLength:   careerLength,
@@ -81,14 +85,14 @@ func createFullPerformer(id int, name string) *models.Performer {
 		Ethnicity:      ethnicity,
 		EyeColor:       eyeColor,
 		FakeTits:       fakeTits,
+		PenisLength:    &penisLength,
+		Circumcised:    &circumcisedEnum,
 		Favorite:       true,
-		Gender:         gender,
+		Gender:         &genderEnum,
 		Height:         &height,
-		Instagram:      instagram,
 		Measurements:   measurements,
 		Piercings:      piercings,
 		Tattoos:        tattoos,
-		Twitter:        twitter,
 		CreatedAt:      createTime,
 		UpdatedAt:      updateTime,
 		Rating:         &rating,
@@ -108,6 +112,7 @@ func createEmptyPerformer(id int) models.Performer {
 		CreatedAt: createTime,
 		UpdatedAt: updateTime,
 		Aliases:   models.NewRelatedStrings([]string{}),
+		URLs:      models.NewRelatedStrings([]string{}),
 		TagIDs:    models.NewRelatedIDs([]int{}),
 		StashIDs:  models.NewRelatedStashIDs([]models.StashID{}),
 	}
@@ -117,7 +122,7 @@ func createFullJSONPerformer(name string, image string) *jsonschema.Performer {
 	return &jsonschema.Performer{
 		Name:           name,
 		Disambiguation: disambiguation,
-		URL:            url,
+		URLs:           []string{url, twitter, instagram},
 		Aliases:        aliases,
 		Birthdate:      birthDate.String(),
 		CareerLength:   careerLength,
@@ -125,14 +130,14 @@ func createFullJSONPerformer(name string, image string) *jsonschema.Performer {
 		Ethnicity:      ethnicity,
 		EyeColor:       eyeColor,
 		FakeTits:       fakeTits,
+		PenisLength:    penisLength,
+		Circumcised:    circumcised,
 		Favorite:       true,
 		Gender:         gender,
 		Height:         strconv.Itoa(height),
-		Instagram:      instagram,
 		Measurements:   measurements,
 		Piercings:      piercings,
 		Tattoos:        tattoos,
-		Twitter:        twitter,
 		CreatedAt: json.JSONTime{
 			Time: createTime,
 		},
@@ -153,6 +158,7 @@ func createFullJSONPerformer(name string, image string) *jsonschema.Performer {
 func createEmptyJSONPerformer() *jsonschema.Performer {
 	return &jsonschema.Performer{
 		Aliases:  []string{},
+		URLs:     []string{},
 		StashIDs: []models.StashID{},
 		CreatedAt: json.JSONTime{
 			Time: createTime,
@@ -195,17 +201,17 @@ func initTestTable() {
 func TestToJSON(t *testing.T) {
 	initTestTable()
 
-	mockPerformerReader := &mocks.PerformerReaderWriter{}
+	db := mocks.NewDatabase()
 
 	imageErr := errors.New("error getting image")
 
-	mockPerformerReader.On("GetImage", testCtx, performerID).Return(imageBytes, nil).Once()
-	mockPerformerReader.On("GetImage", testCtx, noImageID).Return(nil, nil).Once()
-	mockPerformerReader.On("GetImage", testCtx, errImageID).Return(nil, imageErr).Once()
+	db.Performer.On("GetImage", testCtx, performerID).Return(imageBytes, nil).Once()
+	db.Performer.On("GetImage", testCtx, noImageID).Return(nil, nil).Once()
+	db.Performer.On("GetImage", testCtx, errImageID).Return(nil, imageErr).Once()
 
 	for i, s := range scenarios {
 		tag := s.input
-		json, err := ToJSON(testCtx, mockPerformerReader, &tag)
+		json, err := ToJSON(testCtx, db.Performer, &tag)
 
 		switch {
 		case !s.err && err != nil:
@@ -217,5 +223,5 @@ func TestToJSON(t *testing.T) {
 		}
 	}
 
-	mockPerformerReader.AssertExpectations(t)
+	db.AssertExpectations(t)
 }

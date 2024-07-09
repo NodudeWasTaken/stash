@@ -4,14 +4,12 @@ import { GalleriesCriterion } from "src/models/list-filter/criteria/galleries";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { ImageList } from "src/components/Images/ImageList";
 import { mutateRemoveGalleryImages } from "src/core/StashService";
-import {
-  showWhenSelected,
-  PersistanceLevel,
-} from "src/components/List/ItemList";
+import { showWhenSelected } from "src/components/List/ItemList";
 import { useToast } from "src/hooks/Toast";
 import { useIntl } from "react-intl";
 import { faMinus } from "@fortawesome/free-solid-svg-icons";
 import { galleryTitle } from "src/core/galleries";
+import { View } from "src/components/List/views";
 
 interface IGalleryDetailsProps {
   active: boolean;
@@ -33,7 +31,7 @@ export const GalleryImagesPanel: React.FC<IGalleryDetailsProps> = ({
     // if galleries is already present, then we modify it, otherwise add
     let galleryCriterion = filter.criteria.find((c) => {
       return c.criterionOption.type === "galleries";
-    }) as GalleriesCriterion;
+    }) as GalleriesCriterion | undefined;
 
     if (
       galleryCriterion &&
@@ -71,16 +69,16 @@ export const GalleryImagesPanel: React.FC<IGalleryDetailsProps> = ({
         image_ids: Array.from(selectedIds.values()),
       });
 
-      Toast.success({
-        content: intl.formatMessage(
+      Toast.success(
+        intl.formatMessage(
           { id: "toast.removed_entity" },
           {
             count: selectedIds.size,
             singularEntity: intl.formatMessage({ id: "image" }),
             pluralEntity: intl.formatMessage({ id: "images" }),
           }
-        ),
-      });
+        )
+      );
     } catch (e) {
       Toast.error(e);
     }
@@ -102,8 +100,7 @@ export const GalleryImagesPanel: React.FC<IGalleryDetailsProps> = ({
       filterHook={filterHook}
       alterQuery={active}
       extraOperations={otherOperations}
-      persistState={PersistanceLevel.VIEW}
-      persistanceKey="galleryimages"
+      view={View.GalleryImages}
       chapters={gallery.chapters}
     />
   );

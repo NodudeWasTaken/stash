@@ -2,52 +2,20 @@ package api
 
 import (
 	"context"
-	"fmt"
-	"strconv"
-	"time"
 
 	"github.com/stashapp/stash/internal/api/loaders"
 	"github.com/stashapp/stash/internal/api/urlbuilders"
-	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/models"
 )
 
-func (r *imageResolver) getPrimaryFile(ctx context.Context, obj *models.Image) (*file.ImageFile, error) {
-	if obj.PrimaryFileID != nil {
-		f, err := loaders.From(ctx).FileByID.Load(*obj.PrimaryFileID)
-		if err != nil {
-			return nil, err
-		}
-
-		ret, ok := f.(*file.ImageFile)
-		if !ok {
-			return nil, fmt.Errorf("file %T is not an image file", f)
-		}
-
-		return ret, nil
-	}
-
-	return nil, nil
-}
-
-func (r *imageResolver) getFiles(ctx context.Context, obj *models.Image) ([]*file.ImageFile, error) {
+func (r *imageResolver) getFiles(ctx context.Context, obj *models.Image) ([]models.File, error) {
 	fileIDs, err := loaders.From(ctx).ImageFiles.Load(obj.ID)
 	if err != nil {
 		return nil, err
 	}
 
 	files, errs := loaders.From(ctx).FileByID.LoadAll(fileIDs)
-	ret := make([]*file.ImageFile, len(files))
-	for i, bf := range files {
-		f, ok := bf.(*file.ImageFile)
-		if !ok {
-			return nil, fmt.Errorf("file %T is not an image file", f)
-		}
-
-		ret[i] = f
-	}
-
-	return ret, firstError(errs)
+	return files, firstError(errs)
 }
 
 func (r *imageResolver) Title(ctx context.Context, obj *models.Image) (*string, error) {
@@ -55,24 +23,21 @@ func (r *imageResolver) Title(ctx context.Context, obj *models.Image) (*string, 
 	return &ret, nil
 }
 
-func (r *imageResolver) File(ctx context.Context, obj *models.Image) (*ImageFileType, error) {
-	f, err := r.getPrimaryFile(ctx, obj)
+func (r *imageResolver) VisualFiles(ctx context.Context, obj *models.Image) ([]VisualFile, error) {
+	files, err := r.getFiles(ctx, obj)
 	if err != nil {
 		return nil, err
 	}
 
-	if f == nil {
-		return nil, nil
+	ret := make([]VisualFile, len(files))
+	for i, f := range files {
+		ret[i], err = convertVisualFile(f)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	width := f.Width
-	height := f.Height
-	size := f.Size
-	return &ImageFileType{
-		Size:   int(size),
-		Width:  width,
-		Height: height,
-	}, nil
+	return ret, nil
 }
 
 func (r *imageResolver) Date(ctx context.Context, obj *models.Image) (*string, error) {
@@ -89,52 +54,33 @@ func (r *imageResolver) Files(ctx context.Context, obj *models.Image) ([]*ImageF
 		return nil, err
 	}
 
-	ret := make([]*ImageFile, len(files))
+	var ret []*ImageFile
 
-	for i, f := range files {
-		ret[i] = &ImageFile{
-			ID:             strconv.Itoa(int(f.ID)),
-			Path:           f.Path,
-			Basename:       f.Basename,
-			ParentFolderID: strconv.Itoa(int(f.ParentFolderID)),
-			ModTime:        f.ModTime,
-			Size:           f.Size,
-			Width:          f.Width,
-			Height:         f.Height,
-			CreatedAt:      f.CreatedAt,
-			UpdatedAt:      f.UpdatedAt,
-			Fingerprints:   resolveFingerprints(f.Base()),
+	for _, f := range files {
+		// filter out non-image files
+		imageFile, ok := f.(*models.ImageFile)
+		if !ok {
+			continue
 		}
 
-		if f.ZipFileID != nil {
-			zipFileID := strconv.Itoa(int(*f.ZipFileID))
-			ret[i].ZipFileID = &zipFileID
-		}
+		ret = append(ret, &ImageFile{
+			ImageFile: imageFile,
+		})
 	}
 
 	return ret, nil
-}
-
-func (r *imageResolver) FileModTime(ctx context.Context, obj *models.Image) (*time.Time, error) {
-	f, err := r.getPrimaryFile(ctx, obj)
-	if err != nil {
-		return nil, err
-	}
-	if f != nil {
-		return &f.ModTime, nil
-	}
-
-	return nil, nil
 }
 
 func (r *imageResolver) Paths(ctx context.Context, obj *models.Image) (*ImagePathsType, error) {
 	baseURL, _ := ctx.Value(BaseURLCtxKey).(string)
 	builder := urlbuilders.NewImageURLBuilder(baseURL, obj)
 	thumbnailPath := builder.GetThumbnailURL()
+	previewPath := builder.GetPreviewURL()
 	imagePath := builder.GetImageURL()
 	return &ImagePathsType{
 		Image:     &imagePath,
 		Thumbnail: &thumbnailPath,
+		Preview:   &previewPath,
 	}, nil
 }
 
@@ -150,14 +96,6 @@ func (r *imageResolver) Galleries(ctx context.Context, obj *models.Image) (ret [
 	var errs []error
 	ret, errs = loaders.From(ctx).GalleryByID.LoadAll(obj.GalleryIDs.List())
 	return ret, firstError(errs)
-}
-
-func (r *imageResolver) Rating(ctx context.Context, obj *models.Image) (*int, error) {
-	if obj.Rating != nil {
-		rating := models.Rating100To5(*obj.Rating)
-		return &rating, nil
-	}
-	return nil, nil
 }
 
 func (r *imageResolver) Rating100(ctx context.Context, obj *models.Image) (*int, error) {
@@ -198,4 +136,33 @@ func (r *imageResolver) Performers(ctx context.Context, obj *models.Image) (ret 
 	var errs []error
 	ret, errs = loaders.From(ctx).PerformerByID.LoadAll(obj.PerformerIDs.List())
 	return ret, firstError(errs)
+}
+
+func (r *imageResolver) URL(ctx context.Context, obj *models.Image) (*string, error) {
+	if !obj.URLs.Loaded() {
+		if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+			return obj.LoadURLs(ctx, r.repository.Image)
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	urls := obj.URLs.List()
+	if len(urls) == 0 {
+		return nil, nil
+	}
+
+	return &urls[0], nil
+}
+
+func (r *imageResolver) Urls(ctx context.Context, obj *models.Image) ([]string, error) {
+	if !obj.URLs.Loaded() {
+		if err := r.withReadTxn(ctx, func(ctx context.Context) error {
+			return obj.LoadURLs(ctx, r.repository.Image)
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	return obj.URLs.List(), nil
 }

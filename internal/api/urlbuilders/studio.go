@@ -1,8 +1,9 @@
 package urlbuilders
 
 import (
-	"github.com/stashapp/stash/pkg/models"
 	"strconv"
+
+	"github.com/stashapp/stash/pkg/models"
 )
 
 type StudioURLBuilder struct {
@@ -15,10 +16,14 @@ func NewStudioURLBuilder(baseURL string, studio *models.Studio) StudioURLBuilder
 	return StudioURLBuilder{
 		BaseURL:   baseURL,
 		StudioID:  strconv.Itoa(studio.ID),
-		UpdatedAt: strconv.FormatInt(studio.UpdatedAt.Timestamp.Unix(), 10),
+		UpdatedAt: strconv.FormatInt(studio.UpdatedAt.Unix(), 10),
 	}
 }
 
-func (b StudioURLBuilder) GetStudioImageURL() string {
-	return b.BaseURL + "/studio/" + b.StudioID + "/image?" + b.UpdatedAt
+func (b StudioURLBuilder) GetStudioImageURL(hasImage bool) string {
+	url := b.BaseURL + "/studio/" + b.StudioID + "/image?t=" + b.UpdatedAt
+	if !hasImage {
+		url += "&default=true"
+	}
+	return url
 }

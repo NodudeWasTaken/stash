@@ -6,6 +6,27 @@ import (
 	"strconv"
 )
 
+type OperatorFilter[T any] struct {
+	And *T `json:"AND"`
+	Or  *T `json:"OR"`
+	Not *T `json:"NOT"`
+}
+
+// SubFilter returns the subfilter of the operator filter.
+// Only one of And, Or, or Not should be set, so it returns the first of these that are not nil.
+func (f *OperatorFilter[T]) SubFilter() *T {
+	if f.And != nil {
+		return f.And
+	}
+	if f.Or != nil {
+		return f.Or
+	}
+	if f.Not != nil {
+		return f.Not
+	}
+	return nil
+}
+
 type CriterionModifier string
 
 const (
@@ -109,6 +130,20 @@ func (i IntCriterionInput) ValidModifier() bool {
 	return false
 }
 
+type FloatCriterionInput struct {
+	Value    float64           `json:"value"`
+	Value2   *float64          `json:"value2"`
+	Modifier CriterionModifier `json:"modifier"`
+}
+
+func (i FloatCriterionInput) ValidModifier() bool {
+	switch i.Modifier {
+	case CriterionModifierEquals, CriterionModifierNotEquals, CriterionModifierGreaterThan, CriterionModifierLessThan, CriterionModifierIsNull, CriterionModifierNotNull, CriterionModifierBetween, CriterionModifierNotBetween:
+		return true
+	}
+	return false
+}
+
 type ResolutionCriterionInput struct {
 	Value    ResolutionEnum    `json:"value"`
 	Modifier CriterionModifier `json:"modifier"`
@@ -118,11 +153,24 @@ type HierarchicalMultiCriterionInput struct {
 	Value    []string          `json:"value"`
 	Modifier CriterionModifier `json:"modifier"`
 	Depth    *int              `json:"depth"`
+	Excludes []string          `json:"excludes"`
+}
+
+func (i HierarchicalMultiCriterionInput) CombineExcludes() HierarchicalMultiCriterionInput {
+	ii := i
+	if ii.Modifier == CriterionModifierExcludes {
+		ii.Modifier = CriterionModifierIncludesAll
+		ii.Excludes = append(ii.Excludes, ii.Value...)
+		ii.Value = nil
+	}
+
+	return ii
 }
 
 type MultiCriterionInput struct {
 	Value    []string          `json:"value"`
 	Modifier CriterionModifier `json:"modifier"`
+	Excludes []string          `json:"excludes"`
 }
 
 type DateCriterionInput struct {
@@ -135,4 +183,14 @@ type TimestampCriterionInput struct {
 	Value    string            `json:"value"`
 	Value2   *string           `json:"value2"`
 	Modifier CriterionModifier `json:"modifier"`
+}
+
+type PhashDistanceCriterionInput struct {
+	Value    string            `json:"value"`
+	Modifier CriterionModifier `json:"modifier"`
+	Distance *int              `json:"distance"`
+}
+
+type OrientationCriterionInput struct {
+	Value []OrientationEnum `json:"value"`
 }

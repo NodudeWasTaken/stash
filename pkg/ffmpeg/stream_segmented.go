@@ -16,10 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/utils"
 
 	"github.com/zencoder/go-dash/v3/mpd"
 )
@@ -50,7 +50,7 @@ const (
 type StreamType struct {
 	Name          string
 	SegmentType   *SegmentType
-	ServeManifest func(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *file.VideoFile, resolution string)
+	ServeManifest func(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string)
 	Args          func(codec VideoCodec, segment int, videoFilter VideoFilter, videoOnly bool, outputDir string) Args
 }
 
@@ -81,6 +81,7 @@ var (
 				"-f", "hls",
 				"-start_number", fmt.Sprint(segment),
 				"-hls_time", fmt.Sprint(segmentLength),
+				"-hls_flags", "split_by_time",
 				"-hls_segment_type", "mpegts",
 				"-hls_playlist_type", "vod",
 				"-hls_segment_filename", filepath.Join(outputDir, ".%d.ts"),
@@ -110,6 +111,7 @@ var (
 				"-f", "hls",
 				"-start_number", fmt.Sprint(segment),
 				"-hls_time", fmt.Sprint(segmentLength),
+				"-hls_flags", "split_by_time",
 				"-hls_segment_type", "mpegts",
 				"-hls_playlist_type", "vod",
 				"-hls_segment_filename", filepath.Join(outputDir, ".%d.ts"),
@@ -249,7 +251,7 @@ var ErrInvalidSegment = errors.New("invalid segment")
 
 type StreamOptions struct {
 	StreamType *StreamType
-	VideoFile  *file.VideoFile
+	VideoFile  *models.VideoFile
 	Resolution string
 	Hash       string
 	Segment    string
@@ -278,7 +280,7 @@ type waitingSegment struct {
 type runningStream struct {
 	dir              string
 	streamType       *StreamType
-	vf               *file.VideoFile
+	vf               *models.VideoFile
 	maxTranscodeSize int
 	outputDir        string
 
@@ -328,7 +330,8 @@ func (s *runningStream) makeStreamArgs(sm *StreamManager, segment int) Args {
 
 	codec := HLSGetCodec(sm, s.streamType.Name)
 
-	args = sm.encoder.hwDeviceInit(args, codec)
+	fullhw := sm.config.GetTranscodeHardwareAcceleration() && sm.encoder.hwCanFullHWTranscode(sm.context, codec, s.vf, s.maxTranscodeSize)
+	args = sm.encoder.hwDeviceInit(args, codec, fullhw)
 	args = append(args, extraInputArgs...)
 
 	if segment > 0 {
@@ -339,7 +342,7 @@ func (s *runningStream) makeStreamArgs(sm *StreamManager, segment int) Args {
 
 	videoOnly := ProbeAudioCodec(s.vf.AudioCodec) == MissingUnsupported
 
-	videoFilter := sm.encoder.hwMaxResFilter(codec, s.vf.Width, s.vf.Height, s.maxTranscodeSize)
+	videoFilter := sm.encoder.hwMaxResFilter(codec, s.vf, s.maxTranscodeSize, fullhw)
 
 	args = append(args, s.streamType.Args(codec, segment, videoFilter, videoOnly, s.outputDir)...)
 
@@ -393,7 +396,7 @@ func (tp *transcodeProcess) checkSegments() {
 	}
 }
 
-func lastSegment(vf *file.VideoFile) int {
+func lastSegment(vf *models.VideoFile) int {
 	return int(math.Ceil(vf.Duration/segmentLength)) - 1
 }
 
@@ -404,7 +407,7 @@ func segmentExists(path string) bool {
 
 // serveHLSManifest serves a generated HLS playlist. The URLs for the segments
 // are of the form {r.URL}/%d.ts{?urlQuery} where %d is the segment index.
-func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *file.VideoFile, resolution string) {
+func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string) {
 	if sm.cacheDir == "" {
 		logger.Error("[transcode] cannot live transcode with HLS because cache dir is unset")
 		http.Error(w, "cannot live transcode with HLS because cache dir is unset", http.StatusServiceUnavailable)
@@ -455,11 +458,11 @@ func serveHLSManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request,
 	fmt.Fprint(&buf, "#EXT-X-ENDLIST\n")
 
 	w.Header().Set("Content-Type", MimeHLS)
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(buf.Bytes()))
+	utils.ServeStaticContent(w, r, buf.Bytes())
 }
 
 // serveDASHManifest serves a generated DASH manifest.
-func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *file.VideoFile, resolution string) {
+func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request, vf *models.VideoFile, resolution string) {
 	if sm.cacheDir == "" {
 		logger.Error("[transcode] cannot live transcode with DASH because cache dir is unset")
 		http.Error(w, "cannot live transcode files with DASH because cache dir is unset", http.StatusServiceUnavailable)
@@ -546,10 +549,10 @@ func serveDASHManifest(sm *StreamManager, w http.ResponseWriter, r *http.Request
 	_ = m.Write(&buf)
 
 	w.Header().Set("Content-Type", MimeDASH)
-	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(buf.Bytes()))
+	utils.ServeStaticContent(w, r, buf.Bytes())
 }
 
-func (sm *StreamManager) ServeManifest(w http.ResponseWriter, r *http.Request, streamType *StreamType, vf *file.VideoFile, resolution string) {
+func (sm *StreamManager) ServeManifest(w http.ResponseWriter, r *http.Request, streamType *StreamType, vf *models.VideoFile, resolution string) {
 	streamType.ServeManifest(sm, w, r, vf, resolution)
 }
 
@@ -561,9 +564,7 @@ func (sm *StreamManager) serveWaitingSegment(w http.ResponseWriter, r *http.Requ
 		if err == nil {
 			logger.Tracef("[transcode] streaming segment file %s", segment.file)
 			w.Header().Set("Content-Type", segment.segmentType.MimeType)
-			// Prevent caching as segments are generated on the fly
-			w.Header().Add("Cache-Control", "no-cache")
-			http.ServeFile(w, r, segment.path)
+			utils.ServeStaticFile(w, r, segment.path)
 		} else if !errors.Is(err, context.Canceled) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}

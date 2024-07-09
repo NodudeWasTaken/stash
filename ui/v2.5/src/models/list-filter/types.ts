@@ -1,5 +1,15 @@
-// NOTE: add new enum values to the end, to ensure existing data
+import { CriterionValue, ISavedCriterion } from "./criteria/criterion";
 
+export type SavedObjectFilter = {
+  [K in CriterionType]?: ISavedCriterion<CriterionValue>;
+};
+
+export type SavedUIOptions = {
+  display_mode?: DisplayMode;
+  zoom_index?: number;
+};
+
+// NOTE: add new enum values to the end, to ensure existing data
 // is not impacted
 export enum DisplayMode {
   Grid,
@@ -18,8 +28,14 @@ export interface ILabeledValue {
   value: string;
 }
 
+export interface ILabeledValueListValue {
+  items: ILabeledId[];
+  excluded: ILabeledId[];
+}
+
 export interface IHierarchicalLabelValue {
   items: ILabeledId[];
+  excluded: ILabeledId[];
   depth: number;
 }
 
@@ -48,39 +64,57 @@ export interface ITimestampValue {
   value2: string | undefined;
 }
 
-export function criterionIsHierarchicalLabelValue(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any
-): value is IHierarchicalLabelValue {
-  return typeof value === "object" && "items" in value && "depth" in value;
+export interface IPhashDistanceValue {
+  value: string;
+  distance?: number;
 }
 
-export function criterionIsNumberValue(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any
-): value is INumberValue {
-  return typeof value === "object" && "value" in value && "value2" in value;
+export function criterionIsHierarchicalLabelValue(
+  value: unknown
+): value is IHierarchicalLabelValue {
+  return (
+    typeof value === "object" && !!value && "items" in value && "depth" in value
+  );
+}
+
+export function criterionIsNumberValue(value: unknown): value is INumberValue {
+  return (
+    typeof value === "object" &&
+    !!value &&
+    "value" in value &&
+    "value2" in value
+  );
 }
 
 export function criterionIsStashIDValue(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any
+  value: unknown
 ): value is IStashIDValue {
-  return typeof value === "object" && "endpoint" in value && "stashID" in value;
+  return (
+    typeof value === "object" &&
+    !!value &&
+    "endpoint" in value &&
+    "stashID" in value
+  );
 }
 
-export function criterionIsDateValue(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any
-): value is IDateValue {
-  return typeof value === "object" && "value" in value && "value2" in value;
+export function criterionIsDateValue(value: unknown): value is IDateValue {
+  return (
+    typeof value === "object" &&
+    !!value &&
+    "value" in value &&
+    "value2" in value
+  );
 }
 
 export function criterionIsTimestampValue(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value: any
+  value: unknown
 ): value is ITimestampValue {
-  return typeof value === "object" && "value" in value && "value2" in value;
+  return (
+    typeof value === "object" &&
+    !!value &&
+    "value" in value &&
+    "value2" in value
+  );
 }
 
 export interface IOptionType {
@@ -90,33 +124,30 @@ export interface IOptionType {
 }
 
 export type CriterionType =
-  | "none"
   | "path"
-  | "rating"
   | "rating100"
   | "organized"
   | "o_counter"
   | "resolution"
   | "average_resolution"
+  | "framerate"
+  | "bitrate"
+  | "video_codec"
+  | "audio_codec"
   | "duration"
+  | "filter_favorites"
   | "favorite"
-  | "hasMarkers"
-  | "sceneIsMissing"
-  | "imageIsMissing"
-  | "performerIsMissing"
-  | "galleryIsMissing"
-  | "tagIsMissing"
-  | "studioIsMissing"
-  | "movieIsMissing"
+  | "has_markers"
+  | "is_missing"
   | "tags"
-  | "sceneTags"
-  | "performerTags"
-  | "parentTags"
-  | "childTags"
+  | "scene_tags"
+  | "performer_tags"
+  | "studio_tags"
   | "tag_count"
   | "performers"
   | "studios"
-  | "movies"
+  | "scenes"
+  | "groups"
   | "galleries"
   | "birth_year"
   | "age"
@@ -124,44 +155,48 @@ export type CriterionType =
   | "country"
   | "hair_color"
   | "eye_color"
-  | "height"
   | "height_cm"
   | "weight"
   | "measurements"
   | "fake_tits"
+  | "penis_length"
+  | "circumcised"
   | "career_length"
   | "tattoos"
   | "piercings"
   | "aliases"
   | "gender"
-  | "parent_studios"
+  | "parents"
+  | "children"
   | "scene_count"
   | "marker_count"
   | "image_count"
   | "gallery_count"
   | "performer_count"
+  | "studio_count"
+  | "group_count"
   | "death_year"
   | "url"
-  | "stash_id"
   | "interactive"
   | "interactive_speed"
   | "captions"
   | "resume_time"
   | "play_count"
   | "play_duration"
+  | "last_played_at"
   | "name"
   | "details"
   | "title"
   | "oshash"
+  | "orientation"
   | "checksum"
-  | "sceneChecksum"
-  | "galleryChecksum"
-  | "phash"
+  | "phash_distance"
   | "director"
   | "synopsis"
-  | "parent_tag_count"
-  | "child_tag_count"
+  | "parent_count"
+  | "child_count"
   | "performer_favorite"
+  | "favorite"
   | "performer_age"
   | "duplicated"
   | "ignore_auto_tag"
@@ -176,6 +211,7 @@ export type CriterionType =
   | "scene_created_at"
   | "scene_updated_at"
   | "description"
-  | "scene_code"
+  | "code"
+  | "photographer"
   | "disambiguation"
-  | "hasChapters";
+  | "has_chapters";

@@ -3,7 +3,6 @@ package manager
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 
 	"github.com/stashapp/stash/internal/manager/config"
@@ -39,9 +38,15 @@ type SceneServer struct {
 }
 
 func (s *SceneServer) StreamSceneDirect(scene *models.Scene, w http.ResponseWriter, r *http.Request) {
-	fileNamingAlgo := config.GetInstance().GetVideoFileNamingAlgorithm()
+	// #3526 - return 404 if the scene does not have any files
+	if scene.Path == "" {
+		http.Error(w, http.StatusText(404), 404)
+		return
+	}
 
-	filepath := GetInstance().Paths.Scene.GetStreamPath(scene.Path, scene.GetHash(fileNamingAlgo))
+	sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+
+	filepath := GetInstance().Paths.Scene.GetStreamPath(scene.Path, sceneHash)
 	streamRequestCtx := ffmpeg.NewStreamRequestContext(w, r)
 
 	// #2579 - hijacking and closing the connection here causes video playback to fail in Safari
@@ -52,12 +57,11 @@ func (s *SceneServer) StreamSceneDirect(scene *models.Scene, w http.ResponseWrit
 }
 
 func (s *SceneServer) ServeScreenshot(scene *models.Scene, w http.ResponseWriter, r *http.Request) {
-	const defaultSceneImage = "scene/scene.svg"
-
 	var cover []byte
 	readTxnErr := txn.WithReadTxn(r.Context(), s.TxnManager, func(ctx context.Context) error {
-		cover, _ = s.SceneCoverGetter.GetCover(ctx, scene.ID)
-		return nil
+		var err error
+		cover, err = s.SceneCoverGetter.GetCover(ctx, scene.ID)
+		return err
 	})
 	if errors.Is(readTxnErr, context.Canceled) {
 		return
@@ -69,25 +73,25 @@ func (s *SceneServer) ServeScreenshot(scene *models.Scene, w http.ResponseWriter
 	if cover == nil {
 		// fallback to legacy image if present
 		if scene.Path != "" {
-			filepath := GetInstance().Paths.Scene.GetLegacyScreenshotPath(scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm()))
+			sceneHash := scene.GetHash(config.GetInstance().GetVideoFileNamingAlgorithm())
+			filepath := GetInstance().Paths.Scene.GetLegacyScreenshotPath(sceneHash)
 
 			// fall back to the scene image blob if the file isn't present
 			screenshotExists, _ := fsutil.FileExists(filepath)
 			if screenshotExists {
+				if r.URL.Query().Has("t") {
+					w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+				} else {
+					w.Header().Set("Cache-Control", "no-cache")
+				}
 				http.ServeFile(w, r, filepath)
 				return
 			}
 		}
 
 		// fallback to default cover if none found
-		// should always be there
-		f, _ := static.Scene.Open(defaultSceneImage)
-		defer f.Close()
-		stat, _ := f.Stat()
-		http.ServeContent(w, r, "scene.svg", stat.ModTime(), f.(io.ReadSeeker))
+		cover = static.ReadAll(static.DefaultSceneImage)
 	}
 
-	if err := utils.ServeImage(cover, w, r); err != nil {
-		logger.Warnf("error serving screenshot image: %v", err)
-	}
+	utils.ServeImage(w, r, cover)
 }

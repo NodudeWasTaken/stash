@@ -1,38 +1,45 @@
-/* eslint-disable consistent-return */
 /* eslint @typescript-eslint/no-unused-vars: ["error", { "argsIgnorePattern": "^_" }] */
-
 import { IntlShape } from "react-intl";
 import {
   CriterionModifier,
   HierarchicalMultiCriterionInput,
   IntCriterionInput,
   MultiCriterionInput,
-  PHashDuplicationCriterionInput,
   DateCriterionInput,
   TimestampCriterionInput,
+  ConfigDataFragment,
 } from "src/core/generated-graphql";
-import DurationUtils from "src/utils/duration";
+import TextUtils from "src/utils/text";
 import {
   CriterionType,
   IHierarchicalLabelValue,
   ILabeledId,
-  ILabeledValue,
   INumberValue,
   IOptionType,
   IStashIDValue,
   IDateValue,
   ITimestampValue,
+  ILabeledValueListValue,
+  IPhashDistanceValue,
 } from "../types";
 
 export type Option = string | number | IOptionType;
 export type CriterionValue =
   | string
+  | string[]
   | ILabeledId[]
   | IHierarchicalLabelValue
+  | ILabeledValueListValue
   | INumberValue
   | IStashIDValue
   | IDateValue
-  | ITimestampValue;
+  | ITimestampValue
+  | IPhashDistanceValue;
+
+export interface ISavedCriterion<T extends CriterionValue> {
+  modifier: CriterionModifier;
+  value: T | undefined;
+}
 
 const modifierMessageIDs = {
   [CriterionModifier.Equals]: "criterion_modifier.equals",
@@ -52,15 +59,15 @@ const modifierMessageIDs = {
 
 // V = criterion value type
 export abstract class Criterion<V extends CriterionValue> {
-  public static getModifierOption(
-    modifier: CriterionModifier = CriterionModifier.Equals
-  ): ILabeledValue {
-    const messageID = modifierMessageIDs[modifier];
-    return { value: modifier, label: messageID };
-  }
-
   public criterionOption: CriterionOption;
-  public modifier: CriterionModifier;
+
+  protected _modifier!: CriterionModifier;
+  public get modifier(): CriterionModifier {
+    return this._modifier;
+  }
+  public set modifier(value: CriterionModifier) {
+    this._modifier = value;
+  }
 
   protected _value!: V;
   public get value(): V {
@@ -74,7 +81,7 @@ export abstract class Criterion<V extends CriterionValue> {
     return true;
   }
 
-  public abstract getLabelValue(intl: IntlShape): string;
+  protected abstract getLabelValue(intl: IntlShape): string;
 
   constructor(type: CriterionOption, value: V) {
     this.criterionOption = type;
@@ -112,7 +119,7 @@ export abstract class Criterion<V extends CriterionValue> {
   }
 
   public getId(): string {
-    return `${this.criterionOption.parameterName}-${this.modifier.toString()}`; // TODO add values?
+    return `${this.criterionOption.type}-${this.modifier.toString()}`; // TODO add values?
   }
 
   public toJSON() {
@@ -135,14 +142,21 @@ export abstract class Criterion<V extends CriterionValue> {
     return JSON.stringify(encodedCriterion);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public apply(outputFilter: Record<string, any>) {
-    // eslint-disable-next-line no-param-reassign
-    outputFilter[this.criterionOption.parameterName] = this.toCriterionInput();
+  public setFromSavedCriterion(criterion: ISavedCriterion<V>) {
+    if (criterion.value !== undefined && criterion.value !== null) {
+      this.value = criterion.value;
+    }
+    this.modifier = criterion.modifier;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  protected toCriterionInput(): any {
+  public toCriterionInput(): unknown {
+    return {
+      value: this.value,
+      modifier: this.modifier,
+    };
+  }
+
+  public toSavedCriterion(): ISavedCriterion<V> {
     return {
       value: this.value,
       modifier: this.modifier,
@@ -150,36 +164,259 @@ export abstract class Criterion<V extends CriterionValue> {
   }
 }
 
-export type InputType = "number" | "text" | undefined;
+export type InputType =
+  | "number"
+  | "text"
+  | "performers"
+  | "studios"
+  | "tags"
+  | "performer_tags"
+  | "scenes"
+  | "scene_tags"
+  | "groups"
+  | "galleries"
+  | undefined;
 
 interface ICriterionOptionsParams {
   messageID: string;
   type: CriterionType;
   inputType?: InputType;
-  parameterName?: string;
   modifierOptions?: CriterionModifier[];
   defaultModifier?: CriterionModifier;
   options?: Option[];
+  makeCriterion: (
+    o: CriterionOption,
+    config?: ConfigDataFragment
+  ) => Criterion<CriterionValue>;
 }
 export class CriterionOption {
   public readonly messageID: string;
   public readonly type: CriterionType;
-  public readonly parameterName: string;
-  public readonly modifierOptions: ILabeledValue[];
+  public readonly modifierOptions: CriterionModifier[];
   public readonly defaultModifier: CriterionModifier;
   public readonly options: Option[] | undefined;
   public readonly inputType: InputType;
+  public readonly makeCriterionFn: (
+    o: CriterionOption,
+    config?: ConfigDataFragment
+  ) => Criterion<CriterionValue>;
 
   constructor(options: ICriterionOptionsParams) {
     this.messageID = options.messageID;
     this.type = options.type;
-    this.parameterName = options.parameterName ?? options.type;
-    this.modifierOptions = (options.modifierOptions ?? []).map((o) =>
-      Criterion.getModifierOption(o)
-    );
+    this.modifierOptions = options.modifierOptions ?? [];
     this.defaultModifier = options.defaultModifier ?? CriterionModifier.Equals;
     this.options = options.options;
     this.inputType = options.inputType;
+    this.makeCriterionFn = options.makeCriterion;
+  }
+
+  public makeCriterion(config?: ConfigDataFragment) {
+    return this.makeCriterionFn(this, config);
+  }
+}
+
+export class ILabeledIdCriterionOption extends CriterionOption {
+  constructor(
+    messageID: string,
+    value: CriterionType,
+    includeAll: boolean,
+    inputType: InputType,
+    makeCriterion?: () => Criterion<CriterionValue>
+  ) {
+    const modifierOptions = [
+      CriterionModifier.Includes,
+      CriterionModifier.Excludes,
+      CriterionModifier.IsNull,
+      CriterionModifier.NotNull,
+    ];
+
+    let defaultModifier = CriterionModifier.Includes;
+    if (includeAll) {
+      modifierOptions.unshift(CriterionModifier.IncludesAll);
+      defaultModifier = CriterionModifier.IncludesAll;
+    }
+
+    super({
+      messageID,
+      type: value,
+      modifierOptions,
+      defaultModifier,
+      inputType,
+      makeCriterion: makeCriterion
+        ? makeCriterion
+        : () => new ILabeledIdCriterion(this),
+    });
+  }
+}
+
+export class ILabeledIdCriterion extends Criterion<ILabeledId[]> {
+  protected getLabelValue(_intl: IntlShape): string {
+    return this.value.map((v) => v.label).join(", ");
+  }
+
+  public toCriterionInput(): MultiCriterionInput {
+    return {
+      value: this.value.map((v) => v.id),
+      modifier: this.modifier,
+    };
+  }
+
+  public isValid(): boolean {
+    if (
+      this.modifier === CriterionModifier.IsNull ||
+      this.modifier === CriterionModifier.NotNull
+    ) {
+      return true;
+    }
+
+    return this.value.length > 0;
+  }
+
+  constructor(type: CriterionOption) {
+    super(type, []);
+  }
+}
+
+export class IHierarchicalLabeledIdCriterion extends Criterion<IHierarchicalLabelValue> {
+  constructor(type: CriterionOption) {
+    const value: IHierarchicalLabelValue = {
+      items: [],
+      excluded: [],
+      depth: 0,
+    };
+
+    super(type, value);
+  }
+
+  override get modifier(): CriterionModifier {
+    return this._modifier;
+  }
+  override set modifier(value: CriterionModifier) {
+    this._modifier = value;
+
+    // excluded only makes sense for includes and includes all
+    // so reset it for other modifiers
+    if (
+      value !== CriterionModifier.Includes &&
+      value !== CriterionModifier.IncludesAll
+    ) {
+      this.value.excluded = [];
+    }
+  }
+
+  public setFromSavedCriterion(
+    criterion: ISavedCriterion<IHierarchicalLabelValue>
+  ) {
+    const { modifier, value } = criterion;
+
+    if (value !== undefined) {
+      this.value = {
+        items: value.items || [],
+        excluded: value.excluded || [],
+        depth: value.depth || 0,
+      };
+    }
+
+    // if the previous modifier was excludes, replace it with the equivalent includes criterion
+    // this is what is done on the backend
+    // only replace if excludes is not a valid modifierOption
+    if (
+      modifier === CriterionModifier.Excludes &&
+      this.criterionOption.modifierOptions.find(
+        (m) => m === CriterionModifier.Excludes
+      ) === undefined
+    ) {
+      this.modifier = CriterionModifier.Includes;
+      this.value.excluded = [...this.value.excluded, ...this.value.items];
+      this.value.items = [];
+    } else {
+      this.modifier = modifier;
+    }
+  }
+
+  protected getLabelValue(_intl: IntlShape): string {
+    const labels = (this.value.items ?? []).map((v) => v.label).join(", ");
+
+    if (this.value.depth === 0) {
+      return labels;
+    }
+
+    return `${labels} (+${this.value.depth > 0 ? this.value.depth : "all"})`;
+  }
+
+  public toCriterionInput(): HierarchicalMultiCriterionInput {
+    let excludes: string[] = [];
+
+    // if modifier is equals, depth must be 0
+    const depth =
+      this.modifier === CriterionModifier.Equals ? 0 : this.value.depth;
+
+    if (this.value.excluded) {
+      excludes = this.value.excluded.map((v) => v.id);
+    }
+    return {
+      value: this.value.items.map((v) => v.id),
+      excludes: excludes,
+      modifier: this.modifier,
+      depth,
+    };
+  }
+
+  public isValid(): boolean {
+    if (
+      this.modifier === CriterionModifier.IsNull ||
+      this.modifier === CriterionModifier.NotNull
+    ) {
+      return true;
+    }
+
+    return (
+      this.value.items.length > 0 ||
+      (this.value.excluded && this.value.excluded.length > 0)
+    );
+  }
+
+  public getLabel(intl: IntlShape): string {
+    let id = "criterion_modifier.format_string";
+    let modifierString = Criterion.getModifierLabel(intl, this.modifier);
+    let valueString = "";
+    let excludedString = "";
+
+    if (
+      this.modifier !== CriterionModifier.IsNull &&
+      this.modifier !== CriterionModifier.NotNull
+    ) {
+      valueString = this.value.items.map((v) => v.label).join(", ");
+
+      if (this.value.excluded && this.value.excluded.length > 0) {
+        if (this.value.items.length === 0) {
+          modifierString = Criterion.getModifierLabel(
+            intl,
+            CriterionModifier.Excludes
+          );
+          valueString = this.value.excluded.map((v) => v.label).join(", ");
+        } else {
+          id = "criterion_modifier.format_string_excludes";
+          excludedString = this.value.excluded.map((v) => v.label).join(", ");
+        }
+      }
+
+      if (this.value.depth !== 0) {
+        id += "_depth";
+      }
+    }
+
+    return intl.formatMessage(
+      { id },
+      {
+        criterion: intl.formatMessage({ id: this.criterionOption.messageID }),
+        modifierString,
+        valueString,
+        excludedString,
+        depth: this.value.depth,
+      }
+    );
   }
 }
 
@@ -187,13 +424,11 @@ export class StringCriterionOption extends CriterionOption {
   constructor(
     messageID: string,
     value: CriterionType,
-    parameterName?: string,
-    options?: Option[]
+    makeCriterion?: () => Criterion<CriterionValue>
   ) {
     super({
       messageID,
       type: value,
-      parameterName,
       modifierOptions: [
         CriterionModifier.Equals,
         CriterionModifier.NotEquals,
@@ -205,22 +440,46 @@ export class StringCriterionOption extends CriterionOption {
         CriterionModifier.NotMatchesRegex,
       ],
       defaultModifier: CriterionModifier.Equals,
-      options,
       inputType: "text",
+      makeCriterion: makeCriterion
+        ? makeCriterion
+        : () => new StringCriterion(this),
     });
   }
 }
 
 export function createStringCriterionOption(
-  value: CriterionType,
-  messageID?: string,
-  parameterName?: string
+  type: CriterionType,
+  messageID?: string
 ) {
-  return new StringCriterionOption(
-    messageID ?? value,
-    value,
-    parameterName ?? messageID ?? value
-  );
+  return new StringCriterionOption(messageID ?? type, type);
+}
+
+export class MandatoryStringCriterionOption extends CriterionOption {
+  constructor(messageID: string, value: CriterionType) {
+    super({
+      messageID,
+      type: value,
+      modifierOptions: [
+        CriterionModifier.Equals,
+        CriterionModifier.NotEquals,
+        CriterionModifier.Includes,
+        CriterionModifier.Excludes,
+        CriterionModifier.MatchesRegex,
+        CriterionModifier.NotMatchesRegex,
+      ],
+      defaultModifier: CriterionModifier.Equals,
+      inputType: "text",
+      makeCriterion: () => new StringCriterion(this),
+    });
+  }
+}
+
+export function createMandatoryStringCriterionOption(
+  value: CriterionType,
+  messageID?: string
+) {
+  return new MandatoryStringCriterionOption(messageID ?? value, value);
 }
 
 export class StringCriterion extends Criterion<string> {
@@ -228,7 +487,7 @@ export class StringCriterion extends Criterion<string> {
     super(type, "");
   }
 
-  public getLabelValue(_intl: IntlShape) {
+  protected getLabelValue(_intl: IntlShape) {
     return this.value;
   }
 
@@ -241,73 +500,52 @@ export class StringCriterion extends Criterion<string> {
   }
 }
 
-export class MandatoryStringCriterionOption extends CriterionOption {
+export class MultiStringCriterion extends Criterion<string[]> {
+  constructor(type: CriterionOption) {
+    super(type, []);
+  }
+
+  protected getLabelValue(_intl: IntlShape) {
+    return this.value.join(", ");
+  }
+
+  public isValid(): boolean {
+    return (
+      this.modifier === CriterionModifier.IsNull ||
+      this.modifier === CriterionModifier.NotNull ||
+      this.value.length > 0
+    );
+  }
+}
+
+export class BooleanCriterionOption extends CriterionOption {
   constructor(
     messageID: string,
     value: CriterionType,
-    parameterName?: string,
-    options?: Option[]
+    makeCriterion?: () => Criterion<CriterionValue>
   ) {
     super({
       messageID,
       type: value,
-      parameterName,
-      modifierOptions: [
-        CriterionModifier.Equals,
-        CriterionModifier.NotEquals,
-        CriterionModifier.Includes,
-        CriterionModifier.Excludes,
-        CriterionModifier.MatchesRegex,
-        CriterionModifier.NotMatchesRegex,
-      ],
-      defaultModifier: CriterionModifier.Equals,
-      options,
-      inputType: "text",
-    });
-  }
-}
-
-export function createMandatoryStringCriterionOption(
-  value: CriterionType,
-  messageID?: string,
-  parameterName?: string
-) {
-  return new MandatoryStringCriterionOption(
-    messageID ?? value,
-    value,
-    parameterName ?? messageID ?? value
-  );
-}
-
-export class PathCriterionOption extends StringCriterionOption {}
-
-export function createPathCriterionOption(
-  value: CriterionType,
-  messageID?: string,
-  parameterName?: string
-) {
-  return new PathCriterionOption(
-    messageID ?? value,
-    value,
-    parameterName ?? messageID ?? value
-  );
-}
-
-export class BooleanCriterionOption extends CriterionOption {
-  constructor(messageID: string, value: CriterionType, parameterName?: string) {
-    super({
-      messageID,
-      type: value,
-      parameterName,
       modifierOptions: [],
       defaultModifier: CriterionModifier.Equals,
-      options: [true.toString(), false.toString()],
+      options: ["true", "false"],
+      makeCriterion: makeCriterion
+        ? makeCriterion
+        : () => new BooleanCriterion(this),
     });
   }
+}
+
+export function createBooleanCriterionOption(
+  value: CriterionType,
+  messageID?: string
+) {
+  return new BooleanCriterionOption(messageID ?? value, value);
 }
 
 export class BooleanCriterion extends StringCriterion {
-  protected toCriterionInput(): boolean {
+  public toCriterionInput(): boolean {
     return this.value === "true";
   }
 
@@ -316,52 +554,67 @@ export class BooleanCriterion extends StringCriterion {
   }
 }
 
-export function createBooleanCriterionOption(
-  value: CriterionType,
-  messageID?: string,
-  parameterName?: string
-) {
-  return new BooleanCriterionOption(
-    messageID ?? value,
-    value,
-    parameterName ?? messageID ?? value
-  );
-}
-
-export class NumberCriterionOption extends CriterionOption {
+export class StringBooleanCriterionOption extends CriterionOption {
   constructor(
     messageID: string,
     value: CriterionType,
-    parameterName?: string,
-    options?: Option[]
+    makeCriterion?: () => Criterion<CriterionValue>
   ) {
     super({
       messageID,
       type: value,
-      parameterName,
-      modifierOptions: [
-        CriterionModifier.Equals,
-        CriterionModifier.NotEquals,
-        CriterionModifier.GreaterThan,
-        CriterionModifier.LessThan,
-        CriterionModifier.IsNull,
-        CriterionModifier.NotNull,
-        CriterionModifier.Between,
-        CriterionModifier.NotBetween,
-      ],
-      defaultModifier: CriterionModifier.Equals,
-      options,
-      inputType: "number",
+      options: ["true", "false"],
+      makeCriterion: makeCriterion
+        ? makeCriterion
+        : () => new StringBooleanCriterion(this),
     });
   }
 }
 
-export class NullNumberCriterionOption extends CriterionOption {
-  constructor(messageID: string, value: CriterionType, parameterName?: string) {
+export class StringBooleanCriterion extends StringCriterion {
+  public toCriterionInput(): string {
+    return this.value;
+  }
+
+  public isValid() {
+    return this.value === "true" || this.value === "false";
+  }
+}
+
+export class NumberCriterionOption extends CriterionOption {
+  constructor(messageID: string, value: CriterionType) {
     super({
       messageID,
       type: value,
-      parameterName,
+      modifierOptions: [
+        CriterionModifier.Equals,
+        CriterionModifier.NotEquals,
+        CriterionModifier.GreaterThan,
+        CriterionModifier.LessThan,
+        CriterionModifier.IsNull,
+        CriterionModifier.NotNull,
+        CriterionModifier.Between,
+        CriterionModifier.NotBetween,
+      ],
+      defaultModifier: CriterionModifier.Equals,
+      inputType: "number",
+      makeCriterion: () => new NumberCriterion(this),
+    });
+  }
+}
+
+export function createNumberCriterionOption(
+  value: CriterionType,
+  messageID?: string
+) {
+  return new NumberCriterionOption(messageID ?? value, value);
+}
+
+export class NullNumberCriterionOption extends CriterionOption {
+  constructor(messageID: string, value: CriterionType) {
+    super({
+      messageID,
+      type: value,
       modifierOptions: [
         CriterionModifier.Equals,
         CriterionModifier.NotEquals,
@@ -374,16 +627,49 @@ export class NullNumberCriterionOption extends CriterionOption {
       ],
       defaultModifier: CriterionModifier.Equals,
       inputType: "number",
+      makeCriterion: () => new NumberCriterion(this),
     });
   }
 }
 
-export function createNumberCriterionOption(value: CriterionType) {
-  return new NumberCriterionOption(value, value, value);
+export function createNullNumberCriterionOption(
+  value: CriterionType,
+  messageID?: string
+) {
+  return new NullNumberCriterionOption(messageID ?? value, value);
 }
 
-export function createNullNumberCriterionOption(value: CriterionType) {
-  return new NullNumberCriterionOption(value, value, value);
+export class MandatoryNumberCriterionOption extends CriterionOption {
+  constructor(
+    messageID: string,
+    value: CriterionType,
+    makeCriterion?: () => Criterion<CriterionValue>
+  ) {
+    super({
+      messageID,
+      type: value,
+      modifierOptions: [
+        CriterionModifier.Equals,
+        CriterionModifier.NotEquals,
+        CriterionModifier.GreaterThan,
+        CriterionModifier.LessThan,
+        CriterionModifier.Between,
+        CriterionModifier.NotBetween,
+      ],
+      defaultModifier: CriterionModifier.Equals,
+      inputType: "number",
+      makeCriterion: makeCriterion
+        ? makeCriterion
+        : () => new NumberCriterion(this),
+    });
+  }
+}
+
+export function createMandatoryNumberCriterionOption(
+  value: CriterionType,
+  messageID?: string
+) {
+  return new MandatoryNumberCriterionOption(messageID ?? value, value);
 }
 
 export class NumberCriterion extends Criterion<INumberValue> {
@@ -402,15 +688,15 @@ export class NumberCriterion extends Criterion<INumberValue> {
     }
   }
 
-  protected toCriterionInput(): IntCriterionInput {
+  public toCriterionInput(): IntCriterionInput {
     return {
       modifier: this.modifier,
-      value: this.value.value ?? 0,
-      value2: this.value.value2,
+      value: this.value?.value ?? 0,
+      value2: this.value?.value2,
     };
   }
 
-  public getLabelValue(_intl: IntlShape) {
+  protected getLabelValue(_intl: IntlShape) {
     const { value, value2 } = this.value;
     if (
       this.modifier === CriterionModifier.Between ||
@@ -451,129 +737,17 @@ export class NumberCriterion extends Criterion<INumberValue> {
   }
 }
 
-export class ILabeledIdCriterionOption extends CriterionOption {
-  constructor(
-    messageID: string,
-    value: CriterionType,
-    parameterName: string,
-    includeAll: boolean
-  ) {
-    const modifierOptions = [
-      CriterionModifier.Includes,
-      CriterionModifier.Excludes,
-      CriterionModifier.IsNull,
-      CriterionModifier.NotNull,
-    ];
-
-    let defaultModifier = CriterionModifier.Includes;
-    if (includeAll) {
-      modifierOptions.unshift(CriterionModifier.IncludesAll);
-      defaultModifier = CriterionModifier.IncludesAll;
-    }
-
-    super({
-      messageID,
-      type: value,
-      parameterName,
-      modifierOptions,
-      defaultModifier,
-    });
+export class DurationCriterionOption extends MandatoryNumberCriterionOption {
+  constructor(messageID: string, value: CriterionType) {
+    super(messageID, value, () => new DurationCriterion(this));
   }
 }
 
-export class ILabeledIdCriterion extends Criterion<ILabeledId[]> {
-  public getLabelValue(_intl: IntlShape): string {
-    return this.value.map((v) => v.label).join(", ");
-  }
-
-  protected toCriterionInput(): MultiCriterionInput {
-    return {
-      value: this.value.map((v) => v.id),
-      modifier: this.modifier,
-    };
-  }
-
-  public isValid(): boolean {
-    if (
-      this.modifier === CriterionModifier.IsNull ||
-      this.modifier === CriterionModifier.NotNull
-    ) {
-      return true;
-    }
-
-    return this.value.length > 0;
-  }
-
-  constructor(type: CriterionOption) {
-    super(type, []);
-  }
-}
-
-export class IHierarchicalLabeledIdCriterion extends Criterion<IHierarchicalLabelValue> {
-  protected toCriterionInput(): HierarchicalMultiCriterionInput {
-    return {
-      value: (this.value.items ?? []).map((v) => v.id),
-      modifier: this.modifier,
-      depth: this.value.depth,
-    };
-  }
-
-  public getLabelValue(_intl: IntlShape): string {
-    const labels = (this.value.items ?? []).map((v) => v.label).join(", ");
-
-    if (this.value.depth === 0) {
-      return labels;
-    }
-
-    return `${labels} (+${this.value.depth > 0 ? this.value.depth : "all"})`;
-  }
-
-  public isValid(): boolean {
-    if (
-      this.modifier === CriterionModifier.IsNull ||
-      this.modifier === CriterionModifier.NotNull
-    ) {
-      return true;
-    }
-
-    return this.value.items.length > 0;
-  }
-
-  constructor(type: CriterionOption) {
-    const value: IHierarchicalLabelValue = {
-      items: [],
-      depth: 0,
-    };
-
-    super(type, value);
-  }
-}
-
-export class MandatoryNumberCriterionOption extends CriterionOption {
-  constructor(messageID: string, value: CriterionType, parameterName?: string) {
-    super({
-      messageID,
-      type: value,
-      parameterName,
-      modifierOptions: [
-        CriterionModifier.Equals,
-        CriterionModifier.NotEquals,
-        CriterionModifier.GreaterThan,
-        CriterionModifier.LessThan,
-        CriterionModifier.Between,
-        CriterionModifier.NotBetween,
-      ],
-      defaultModifier: CriterionModifier.Equals,
-      inputType: "number",
-    });
-  }
-}
-
-export function createMandatoryNumberCriterionOption(
+export function createDurationCriterionOption(
   value: CriterionType,
   messageID?: string
 ) {
-  return new MandatoryNumberCriterionOption(messageID ?? value, value, value);
+  return new DurationCriterionOption(messageID ?? value, value);
 }
 
 export class DurationCriterion extends Criterion<INumberValue> {
@@ -581,26 +755,25 @@ export class DurationCriterion extends Criterion<INumberValue> {
     super(type, { value: undefined, value2: undefined });
   }
 
-  protected toCriterionInput(): IntCriterionInput {
+  public toCriterionInput(): IntCriterionInput {
     return {
       modifier: this.modifier,
-      value: this.value.value ?? 0,
-      value2: this.value.value2,
+      value: this.value?.value ?? 0,
+      value2: this.value?.value2,
     };
   }
 
-  public getLabelValue(_intl: IntlShape) {
-    return this.modifier === CriterionModifier.Between ||
+  protected getLabelValue(_intl: IntlShape) {
+    const value = TextUtils.secondsToTimestamp(this.value.value ?? 0);
+    const value2 = TextUtils.secondsToTimestamp(this.value.value2 ?? 0);
+    if (
+      this.modifier === CriterionModifier.Between ||
       this.modifier === CriterionModifier.NotBetween
-      ? `${DurationUtils.secondsToString(
-          this.value.value ?? 0
-        )} ${DurationUtils.secondsToString(this.value.value2 ?? 0)}`
-      : this.modifier === CriterionModifier.GreaterThan ||
-        this.modifier === CriterionModifier.LessThan ||
-        this.modifier === CriterionModifier.Equals ||
-        this.modifier === CriterionModifier.NotEquals
-      ? DurationUtils.secondsToString(this.value.value ?? 0)
-      : "?";
+    ) {
+      return `${value}, ${value2}`;
+    } else {
+      return value;
+    }
   }
 
   public isValid(): boolean {
@@ -628,25 +801,11 @@ export class DurationCriterion extends Criterion<INumberValue> {
   }
 }
 
-export class PhashDuplicateCriterion extends StringCriterion {
-  protected toCriterionInput(): PHashDuplicationCriterionInput {
-    return {
-      duplicated: this.value === "true",
-    };
-  }
-}
-
 export class DateCriterionOption extends CriterionOption {
-  constructor(
-    messageID: string,
-    value: CriterionType,
-    parameterName?: string,
-    options?: Option[]
-  ) {
+  constructor(messageID: string, value: CriterionType) {
     super({
       messageID,
       type: value,
-      parameterName,
       modifierOptions: [
         CriterionModifier.Equals,
         CriterionModifier.NotEquals,
@@ -658,14 +817,14 @@ export class DateCriterionOption extends CriterionOption {
         CriterionModifier.NotBetween,
       ],
       defaultModifier: CriterionModifier.Equals,
-      options,
       inputType: "text",
+      makeCriterion: () => new DateCriterion(this),
     });
   }
 }
 
 export function createDateCriterionOption(value: CriterionType) {
-  return new DateCriterionOption(value, value, value);
+  return new DateCriterionOption(value, value);
 }
 
 export class DateCriterion extends Criterion<IDateValue> {
@@ -676,15 +835,15 @@ export class DateCriterion extends Criterion<IDateValue> {
     };
   }
 
-  protected toCriterionInput(): DateCriterionInput {
+  public toCriterionInput(): DateCriterionInput {
     return {
       modifier: this.modifier,
-      value: this.value.value,
-      value2: this.value.value2,
+      value: this.value?.value,
+      value2: this.value?.value2,
     };
   }
 
-  public getLabelValue() {
+  protected getLabelValue() {
     const { value } = this.value;
     return this.modifier === CriterionModifier.Between ||
       this.modifier === CriterionModifier.NotBetween
@@ -722,16 +881,10 @@ export class DateCriterion extends Criterion<IDateValue> {
 }
 
 export class TimestampCriterionOption extends CriterionOption {
-  constructor(
-    messageID: string,
-    value: CriterionType,
-    parameterName?: string,
-    options?: Option[]
-  ) {
+  constructor(messageID: string, value: CriterionType) {
     super({
       messageID,
       type: value,
-      parameterName,
       modifierOptions: [
         CriterionModifier.GreaterThan,
         CriterionModifier.LessThan,
@@ -741,25 +894,47 @@ export class TimestampCriterionOption extends CriterionOption {
         CriterionModifier.NotBetween,
       ],
       defaultModifier: CriterionModifier.GreaterThan,
-      options,
       inputType: "text",
+      makeCriterion: () => new TimestampCriterion(this),
     });
   }
 }
 
 export function createTimestampCriterionOption(value: CriterionType) {
-  return new TimestampCriterionOption(value, value, value);
+  return new TimestampCriterionOption(value, value);
+}
+
+export class MandatoryTimestampCriterionOption extends CriterionOption {
+  constructor(messageID: string, value: CriterionType) {
+    super({
+      messageID,
+      type: value,
+      modifierOptions: [
+        CriterionModifier.GreaterThan,
+        CriterionModifier.LessThan,
+        CriterionModifier.Between,
+        CriterionModifier.NotBetween,
+      ],
+      defaultModifier: CriterionModifier.GreaterThan,
+      inputType: "text",
+      makeCriterion: () => new TimestampCriterion(this),
+    });
+  }
+}
+
+export function createMandatoryTimestampCriterionOption(value: CriterionType) {
+  return new MandatoryTimestampCriterionOption(value, value);
 }
 
 export class TimestampCriterion extends Criterion<ITimestampValue> {
   public encodeValue() {
     return {
-      value: this.value.value,
-      value2: this.value.value2,
+      value: this.value?.value,
+      value2: this.value?.value2,
     };
   }
 
-  protected toCriterionInput(): TimestampCriterionInput {
+  public toCriterionInput(): TimestampCriterionInput {
     return {
       modifier: this.modifier,
       value: this.transformValueToInput(this.value.value),
@@ -769,7 +944,7 @@ export class TimestampCriterion extends Criterion<ITimestampValue> {
     };
   }
 
-  public getLabelValue() {
+  protected getLabelValue() {
     const { value } = this.value;
     return this.modifier === CriterionModifier.Between ||
       this.modifier === CriterionModifier.NotBetween
@@ -813,32 +988,4 @@ export class TimestampCriterion extends Criterion<ITimestampValue> {
   constructor(type: CriterionOption) {
     super(type, { value: "", value2: undefined });
   }
-}
-
-export class MandatoryTimestampCriterionOption extends CriterionOption {
-  constructor(
-    messageID: string,
-    value: CriterionType,
-    parameterName?: string,
-    options?: Option[]
-  ) {
-    super({
-      messageID,
-      type: value,
-      parameterName,
-      modifierOptions: [
-        CriterionModifier.GreaterThan,
-        CriterionModifier.LessThan,
-        CriterionModifier.Between,
-        CriterionModifier.NotBetween,
-      ],
-      defaultModifier: CriterionModifier.GreaterThan,
-      options,
-      inputType: "text",
-    });
-  }
-}
-
-export function createMandatoryTimestampCriterionOption(value: CriterionType) {
-  return new MandatoryTimestampCriterionOption(value, value, value);
 }

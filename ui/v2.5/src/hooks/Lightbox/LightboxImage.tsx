@@ -2,7 +2,12 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import * as GQL from "src/core/generated-graphql";
 
 const ZOOM_STEP = 1.1;
+const ZOOM_FACTOR = 700;
+const SCROLL_GROUP_THRESHOLD = 8;
+const SCROLL_GROUP_EXIT_THRESHOLD = 4;
+const SCROLL_INFINITE_THRESHOLD = 10;
 const SCROLL_PAN_STEP = 75;
+const SCROLL_PAN_FACTOR = 2;
 const CLASSNAME = "Lightbox";
 const CLASSNAME_CAROUSEL = `${CLASSNAME}-carousel`;
 const CLASSNAME_IMAGE = `${CLASSNAME_CAROUSEL}-image`;
@@ -47,49 +52,64 @@ function calculateDefaultZoom(
 
 interface IProps {
   src: string;
+  width: number;
+  height: number;
   displayMode: GQL.ImageLightboxDisplayMode;
   scaleUp: boolean;
   scrollMode: GQL.ImageLightboxScrollMode;
   resetPosition?: boolean;
   zoom: number;
   scrollAttemptsBeforeChange: number;
+  // these refs must be outside of LightboxImage,
+  // since they need to be shared between all LightboxImages
+  firstScroll: React.MutableRefObject<number | null>;
+  inScrollGroup: React.MutableRefObject<boolean>;
   current: boolean;
   // set to true to align image with bottom instead of top
   alignBottom?: boolean;
   setZoom: (v: number) => void;
+  debouncedScrollReset: () => void;
   onLeft: () => void;
   onRight: () => void;
+  isVideo: boolean;
 }
 
 export const LightboxImage: React.FC<IProps> = ({
   src,
-  onLeft,
-  onRight,
+  width,
+  height,
   displayMode,
   scaleUp,
   scrollMode,
-  alignBottom,
+  resetPosition,
   zoom,
   scrollAttemptsBeforeChange,
+  firstScroll,
+  inScrollGroup,
   current,
+  alignBottom,
   setZoom,
-  resetPosition,
+  debouncedScrollReset,
+  onLeft,
+  onRight,
+  isVideo,
 }) => {
   const [defaultZoom, setDefaultZoom] = useState(1);
   const [moving, setMoving] = useState(false);
   const [positionX, setPositionX] = useState(0);
   const [positionY, setPositionY] = useState(0);
-  const [width, setWidth] = useState(0);
-  const [height, setHeight] = useState(0);
+  const [imageWidth, setImageWidth] = useState(width);
+  const [imageHeight, setImageHeight] = useState(height);
   const [boxWidth, setBoxWidth] = useState(0);
   const [boxHeight, setBoxHeight] = useState(0);
+  const dimensionsProvided = width > 0 && height > 0;
 
   const mouseDownEvent = useRef<MouseEvent>();
   const resetPositionRef = useRef(resetPosition);
 
   const container = React.createRef<HTMLDivElement>();
   const startPoints = useRef<number[]>([0, 0]);
-  const pointerCache = useRef<React.PointerEvent<HTMLDivElement>[]>([]);
+  const pointerCache = useRef<React.PointerEvent[]>([]);
   const prevDiff = useRef<number | undefined>();
 
   const scrollAttempts = useRef(0);
@@ -100,15 +120,36 @@ export const LightboxImage: React.FC<IProps> = ({
       setBoxWidth(box.offsetWidth);
       setBoxHeight(box.offsetHeight);
     }
+
+    function toggleVideoPlay() {
+      if (container.current) {
+        let openVideo = container.current.getElementsByTagName("video");
+        if (openVideo.length > 0) {
+          let rect = openVideo[0].getBoundingClientRect();
+          if (Math.abs(rect.x) < document.body.clientWidth / 2) {
+            openVideo[0].play();
+          } else {
+            openVideo[0].pause();
+          }
+        }
+      }
+    }
+
+    setTimeout(() => {
+      toggleVideoPlay();
+    }, 250);
   }, [container]);
 
   useEffect(() => {
+    if (dimensionsProvided) {
+      return;
+    }
     let mounted = true;
     const img = new Image();
     function onLoad() {
       if (mounted) {
-        setWidth(img.width);
-        setHeight(img.height);
+        setImageWidth(img.width);
+        setImageHeight(img.height);
       }
     }
 
@@ -118,43 +159,43 @@ export const LightboxImage: React.FC<IProps> = ({
     return () => {
       mounted = false;
     };
-  }, [src]);
+  }, [src, dimensionsProvided]);
 
   const minMaxY = useCallback(
     (appliedZoom: number) => {
       let minY, maxY: number;
-      const inBounds = appliedZoom * height <= boxHeight;
+      const inBounds = appliedZoom * imageHeight <= boxHeight;
 
       // NOTE: I don't even know how these work, but they do
       if (!inBounds) {
-        if (height > boxHeight) {
+        if (imageHeight > boxHeight) {
           minY =
-            (appliedZoom * height - height) / 2 -
-            appliedZoom * height +
+            (appliedZoom * imageHeight - imageHeight) / 2 -
+            appliedZoom * imageHeight +
             boxHeight;
-          maxY = (appliedZoom * height - height) / 2;
+          maxY = (appliedZoom * imageHeight - imageHeight) / 2;
         } else {
-          minY = (boxHeight - appliedZoom * height) / 2;
-          maxY = (appliedZoom * height - boxHeight) / 2;
+          minY = (boxHeight - appliedZoom * imageHeight) / 2;
+          maxY = (appliedZoom * imageHeight - boxHeight) / 2;
         }
       } else {
-        minY = Math.min((boxHeight - height) / 2, 0);
+        minY = Math.min((boxHeight - imageHeight) / 2, 0);
         maxY = minY;
       }
 
       return [minY, maxY];
     },
-    [height, boxHeight]
+    [imageHeight, boxHeight]
   );
 
   const calculateInitialPosition = useCallback(
     (appliedZoom: number) => {
       // Center image from container's center
-      const newPositionX = Math.min((boxWidth - width) / 2, 0);
+      const newPositionX = Math.min((boxWidth - imageWidth) / 2, 0);
       let newPositionY: number;
 
       if (displayMode === GQL.ImageLightboxDisplayMode.FitXy) {
-        newPositionY = Math.min((boxHeight - height) / 2, 0);
+        newPositionY = Math.min((boxHeight - imageHeight) / 2, 0);
       } else {
         // otherwise, align image with container
         const [minY, maxY] = minMaxY(appliedZoom);
@@ -167,16 +208,24 @@ export const LightboxImage: React.FC<IProps> = ({
 
       return [newPositionX, newPositionY];
     },
-    [displayMode, boxWidth, width, boxHeight, height, alignBottom, minMaxY]
+    [
+      displayMode,
+      boxWidth,
+      imageWidth,
+      boxHeight,
+      imageHeight,
+      alignBottom,
+      minMaxY,
+    ]
   );
 
   useEffect(() => {
     // don't set anything until we have the dimensions
-    if (!width || !height || !boxWidth || !boxHeight) {
+    if (!imageWidth || !imageHeight || !boxWidth || !boxHeight) {
       return;
     }
 
-    if (!scaleUp && width < boxWidth && height < boxHeight) {
+    if (!scaleUp && imageWidth < boxWidth && imageHeight < boxHeight) {
       setDefaultZoom(1);
       setPositionX(0);
       setPositionY(0);
@@ -185,8 +234,8 @@ export const LightboxImage: React.FC<IProps> = ({
 
     // set initial zoom level based on options
     const newZoom = calculateDefaultZoom(
-      width,
-      height,
+      imageWidth,
+      imageHeight,
       boxWidth,
       boxHeight,
       displayMode,
@@ -206,8 +255,8 @@ export const LightboxImage: React.FC<IProps> = ({
       scrollAttempts.current = -scrollAttemptsBeforeChange;
     }
   }, [
-    width,
-    height,
+    imageWidth,
+    imageHeight,
     boxWidth,
     boxHeight,
     displayMode,
@@ -233,7 +282,7 @@ export const LightboxImage: React.FC<IProps> = ({
     calculateInitialPosition,
   ]);
 
-  function getScrollMode(ev: React.WheelEvent<HTMLDivElement>) {
+  function getScrollMode(ev: React.WheelEvent) {
     if (ev.shiftKey) {
       switch (scrollMode) {
         case GQL.ImageLightboxScrollMode.Zoom:
@@ -246,72 +295,134 @@ export const LightboxImage: React.FC<IProps> = ({
     return scrollMode;
   }
 
-  function onContainerScroll(ev: React.WheelEvent<HTMLDivElement>) {
+  function onContainerScroll(ev: React.WheelEvent) {
     // don't zoom if mouse isn't over image
     if (getScrollMode(ev) === GQL.ImageLightboxScrollMode.PanY) {
       onImageScroll(ev);
     }
   }
 
-  function onImageScrollPanY(ev: React.WheelEvent<HTMLDivElement>) {
-    if (current) {
-      const [minY, maxY] = minMaxY(zoom * defaultZoom);
-
-      const scrollable = positionY !== maxY || positionY !== minY;
-
-      let newPositionY =
-        positionY + (ev.deltaY < 0 ? SCROLL_PAN_STEP : -SCROLL_PAN_STEP);
-
-      // #2389 - if scroll up and at top, then go to previous image
-      // if scroll down and at bottom, then go to next image
-      if (newPositionY > maxY && positionY === maxY) {
-        // #2535 - require additional scrolls before changing page
-        if (
-          !scrollable ||
-          scrollAttempts.current <= -scrollAttemptsBeforeChange
-        ) {
+  function onLeftScroll(
+    ev: React.WheelEvent,
+    scrollable: boolean,
+    infinite: boolean
+  ) {
+    if (infinite) {
+      // for infinite scrolls, only change once per scroll "group"
+      if (ev.deltaY <= -SCROLL_GROUP_THRESHOLD) {
+        if (!inScrollGroup.current) {
           onLeft();
-        } else {
-          scrollAttempts.current--;
         }
-      } else if (newPositionY < minY && positionY === minY) {
-        // #2535 - require additional scrolls before changing page
-        if (
-          !scrollable ||
-          scrollAttempts.current >= scrollAttemptsBeforeChange
-        ) {
-          onRight();
-        } else {
-          scrollAttempts.current++;
-        }
-      } else {
-        scrollAttempts.current = 0;
-
-        // ensure image doesn't go offscreen
-        newPositionY = Math.max(newPositionY, minY);
-        newPositionY = Math.min(newPositionY, maxY);
-
-        setPositionY(newPositionY);
       }
-
-      ev.stopPropagation();
+    } else {
+      // #2535 - require additional scrolls before changing page
+      if (
+        !scrollable ||
+        scrollAttempts.current <= -scrollAttemptsBeforeChange
+      ) {
+        scrollAttempts.current = 0;
+        onLeft();
+      } else {
+        scrollAttempts.current--;
+      }
     }
   }
 
-  function onImageScroll(ev: React.WheelEvent<HTMLDivElement>) {
-    const percent = ev.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+  function onRightScroll(
+    ev: React.WheelEvent,
+    scrollable: boolean,
+    infinite: boolean
+  ) {
+    if (infinite) {
+      // for infinite scrolls, only change once per scroll "group"
+      if (ev.deltaY >= SCROLL_GROUP_THRESHOLD) {
+        if (!inScrollGroup.current) {
+          onRight();
+        }
+      }
+    } else {
+      // #2535 - require additional scrolls before changing page
+      if (!scrollable || scrollAttempts.current >= scrollAttemptsBeforeChange) {
+        scrollAttempts.current = 0;
+        onRight();
+      } else {
+        scrollAttempts.current++;
+      }
+    }
+  }
+
+  function onImageScrollPanY(ev: React.WheelEvent, infinite: boolean) {
+    if (!current) return;
+
+    const [minY, maxY] = minMaxY(zoom * defaultZoom);
+
+    const scrollable = positionY !== maxY || positionY !== minY;
+
+    let newPositionY: number;
+    if (infinite) {
+      newPositionY = positionY - ev.deltaY / SCROLL_PAN_FACTOR;
+    } else {
+      newPositionY =
+        positionY + (ev.deltaY < 0 ? SCROLL_PAN_STEP : -SCROLL_PAN_STEP);
+    }
+
+    // #2389 - if scroll up and at top, then go to previous image
+    // if scroll down and at bottom, then go to next image
+    if (newPositionY > maxY && positionY === maxY) {
+      onLeftScroll(ev, scrollable, infinite);
+    } else if (newPositionY < minY && positionY === minY) {
+      onRightScroll(ev, scrollable, infinite);
+    } else {
+      scrollAttempts.current = 0;
+
+      // ensure image doesn't go offscreen
+      newPositionY = Math.max(newPositionY, minY);
+      newPositionY = Math.min(newPositionY, maxY);
+
+      setPositionY(newPositionY);
+    }
+
+    ev.stopPropagation();
+  }
+
+  function onImageScroll(ev: React.WheelEvent) {
+    const absDeltaY = Math.abs(ev.deltaY);
+    const firstDeltaY = firstScroll.current;
+    // detect infinite scrolling (mousepad, mouse with infinite scrollwheel)
+    const infinite =
+      // scrolling is infinite if deltaY is small
+      absDeltaY < SCROLL_INFINITE_THRESHOLD ||
+      // or if scroll events come quickly and the first one was small
+      (firstDeltaY !== null &&
+        Math.abs(firstDeltaY) < SCROLL_INFINITE_THRESHOLD);
 
     switch (getScrollMode(ev)) {
       case GQL.ImageLightboxScrollMode.Zoom:
+        let percent: number;
+        if (infinite) {
+          percent = 1 - ev.deltaY / ZOOM_FACTOR;
+        } else {
+          percent = ev.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+        }
         setZoom(zoom * percent);
         break;
       case GQL.ImageLightboxScrollMode.PanY:
-        onImageScrollPanY(ev);
+        onImageScrollPanY(ev, infinite);
         break;
     }
+    if (firstDeltaY === null) {
+      firstScroll.current = ev.deltaY;
+    }
+    if (absDeltaY >= SCROLL_GROUP_THRESHOLD) {
+      inScrollGroup.current = true;
+    } else if (absDeltaY <= SCROLL_GROUP_EXIT_THRESHOLD) {
+      // only "exit" the scroll group if speed has slowed considerably
+      inScrollGroup.current = false;
+    }
+    debouncedScrollReset();
   }
 
-  function onImageMouseOver(ev: React.MouseEvent<HTMLDivElement, MouseEvent>) {
+  function onImageMouseOver(ev: React.MouseEvent) {
     if (!moving) return;
 
     if (!ev.buttons) {
@@ -327,14 +438,14 @@ export const LightboxImage: React.FC<IProps> = ({
     setPositionY(positionY + posY);
   }
 
-  function onImageMouseDown(ev: React.MouseEvent<HTMLDivElement, MouseEvent>) {
+  function onImageMouseDown(ev: React.MouseEvent) {
     startPoints.current = [ev.pageX, ev.pageY];
     setMoving(true);
 
     mouseDownEvent.current = ev.nativeEvent;
   }
 
-  function onImageMouseUp(ev: React.MouseEvent<HTMLDivElement, MouseEvent>) {
+  function onImageMouseUp(ev: React.MouseEvent) {
     if (ev.button !== 0) return;
 
     if (
@@ -360,7 +471,7 @@ export const LightboxImage: React.FC<IProps> = ({
     }
   }
 
-  function onTouchStart(ev: React.TouchEvent<HTMLDivElement>) {
+  function onTouchStart(ev: React.TouchEvent) {
     ev.preventDefault();
     if (ev.touches.length === 1) {
       startPoints.current = [ev.touches[0].pageX, ev.touches[0].pageY];
@@ -368,7 +479,7 @@ export const LightboxImage: React.FC<IProps> = ({
     }
   }
 
-  function onTouchMove(ev: React.TouchEvent<HTMLDivElement>) {
+  function onTouchMove(ev: React.TouchEvent) {
     if (!moving) return;
 
     if (ev.touches.length === 1) {
@@ -381,7 +492,7 @@ export const LightboxImage: React.FC<IProps> = ({
     }
   }
 
-  function onPointerDown(ev: React.PointerEvent<HTMLDivElement>) {
+  function onPointerDown(ev: React.PointerEvent) {
     // replace pointer event with the same id, if applicable
     pointerCache.current = pointerCache.current.filter(
       (e) => e.pointerId !== ev.pointerId
@@ -391,7 +502,7 @@ export const LightboxImage: React.FC<IProps> = ({
     prevDiff.current = undefined;
   }
 
-  function onPointerUp(ev: React.PointerEvent<HTMLDivElement>) {
+  function onPointerUp(ev: React.PointerEvent) {
     for (let i = 0; i < pointerCache.current.length; i++) {
       if (pointerCache.current[i].pointerId === ev.pointerId) {
         pointerCache.current.splice(i, 1);
@@ -400,7 +511,7 @@ export const LightboxImage: React.FC<IProps> = ({
     }
   }
 
-  function onPointerMove(ev: React.PointerEvent<HTMLDivElement>) {
+  function onPointerMove(ev: React.PointerEvent) {
     // find the event in the cache
     const cachedIndex = pointerCache.current.findIndex(
       (c) => c.pointerId === ev.pointerId
@@ -432,6 +543,8 @@ export const LightboxImage: React.FC<IProps> = ({
     }
   }
 
+  const ImageView = isVideo ? "video" : "img";
+
   return (
     <div
       ref={container}
@@ -448,20 +561,21 @@ export const LightboxImage: React.FC<IProps> = ({
         >
           <source srcSet={src} media="(min-width: 800px)" />
           {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-          <img
+          <ImageView
+            loop={isVideo}
             src={src}
             alt=""
             draggable={false}
             style={{ touchAction: "none" }}
             onWheel={current ? (e) => onImageScroll(e) : undefined}
-            onMouseDown={(e) => onImageMouseDown(e)}
-            onMouseUp={(e) => onImageMouseUp(e)}
-            onMouseMove={(e) => onImageMouseOver(e)}
-            onTouchStart={(e) => onTouchStart(e)}
-            onTouchMove={(e) => onTouchMove(e)}
-            onPointerDown={(e) => onPointerDown(e)}
-            onPointerUp={(e) => onPointerUp(e)}
-            onPointerMove={(e) => onPointerMove(e)}
+            onMouseDown={onImageMouseDown}
+            onMouseUp={onImageMouseUp}
+            onMouseMove={onImageMouseOver}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+            onPointerMove={onPointerMove}
           />
         </picture>
       ) : undefined}

@@ -7,6 +7,11 @@ type StatsResultType {
   gallery_count: Int!
   performer_count: Int!
   studio_count: Int!
-  movie_count: Int!
+  group_count: Int!
+  movie_count: Int! @deprecated(reason: "use group_count instead")
   tag_count: Int!
+  total_o_count: Int!
+  total_play_duration: Float!
+  total_play_count: Int!
+  scenes_played: Int!
 }

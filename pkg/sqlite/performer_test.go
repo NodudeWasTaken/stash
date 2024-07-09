@@ -22,6 +22,11 @@ func loadPerformerRelationships(ctx context.Context, expected models.Performer, 
 			return err
 		}
 	}
+	if expected.URLs.Loaded() {
+		if err := actual.LoadURLs(ctx, db.Performer); err != nil {
+			return err
+		}
+	}
 	if expected.TagIDs.Loaded() {
 		if err := actual.LoadTagIDs(ctx, db.Performer); err != nil {
 			return err
@@ -45,6 +50,7 @@ func Test_PerformerStore_Create(t *testing.T) {
 		url            = "url"
 		twitter        = "twitter"
 		instagram      = "instagram"
+		urls           = []string{url, twitter, instagram}
 		rating         = 3
 		ethnicity      = "ethnicity"
 		country        = "country"
@@ -52,6 +58,8 @@ func Test_PerformerStore_Create(t *testing.T) {
 		height         = 134
 		measurements   = "measurements"
 		fakeTits       = "fakeTits"
+		penisLength    = 1.23
+		circumcised    = models.CircumisedEnumCut
 		careerLength   = "careerLength"
 		tattoos        = "tattoos"
 		piercings      = "piercings"
@@ -67,8 +75,8 @@ func Test_PerformerStore_Create(t *testing.T) {
 		createdAt      = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 		updatedAt      = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 
-		birthdate = models.NewDate("2003-02-01")
-		deathdate = models.NewDate("2023-02-01")
+		birthdate, _ = models.ParseDate("2003-02-01")
+		deathdate, _ = models.ParseDate("2023-02-01")
 	)
 
 	tests := []struct {
@@ -81,10 +89,8 @@ func Test_PerformerStore_Create(t *testing.T) {
 			models.Performer{
 				Name:           name,
 				Disambiguation: disambiguation,
-				Gender:         gender,
-				URL:            url,
-				Twitter:        twitter,
-				Instagram:      instagram,
+				Gender:         &gender,
+				URLs:           models.NewRelatedStrings(urls),
 				Birthdate:      &birthdate,
 				Ethnicity:      ethnicity,
 				Country:        country,
@@ -92,6 +98,8 @@ func Test_PerformerStore_Create(t *testing.T) {
 				Height:         &height,
 				Measurements:   measurements,
 				FakeTits:       fakeTits,
+				PenisLength:    &penisLength,
+				Circumcised:    &circumcised,
 				CareerLength:   careerLength,
 				Tattoos:        tattoos,
 				Piercings:      piercings,
@@ -189,6 +197,7 @@ func Test_PerformerStore_Update(t *testing.T) {
 		url            = "url"
 		twitter        = "twitter"
 		instagram      = "instagram"
+		urls           = []string{url, twitter, instagram}
 		rating         = 3
 		ethnicity      = "ethnicity"
 		country        = "country"
@@ -196,6 +205,8 @@ func Test_PerformerStore_Update(t *testing.T) {
 		height         = 134
 		measurements   = "measurements"
 		fakeTits       = "fakeTits"
+		penisLength    = 1.23
+		circumcised    = models.CircumisedEnumCut
 		careerLength   = "careerLength"
 		tattoos        = "tattoos"
 		piercings      = "piercings"
@@ -211,8 +222,8 @@ func Test_PerformerStore_Update(t *testing.T) {
 		createdAt      = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 		updatedAt      = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 
-		birthdate = models.NewDate("2003-02-01")
-		deathdate = models.NewDate("2023-02-01")
+		birthdate, _ = models.ParseDate("2003-02-01")
+		deathdate, _ = models.ParseDate("2023-02-01")
 	)
 
 	tests := []struct {
@@ -226,10 +237,8 @@ func Test_PerformerStore_Update(t *testing.T) {
 				ID:             performerIDs[performerIdxWithGallery],
 				Name:           name,
 				Disambiguation: disambiguation,
-				Gender:         gender,
-				URL:            url,
-				Twitter:        twitter,
-				Instagram:      instagram,
+				Gender:         &gender,
+				URLs:           models.NewRelatedStrings(urls),
 				Birthdate:      &birthdate,
 				Ethnicity:      ethnicity,
 				Country:        country,
@@ -237,6 +246,8 @@ func Test_PerformerStore_Update(t *testing.T) {
 				Height:         &height,
 				Measurements:   measurements,
 				FakeTits:       fakeTits,
+				PenisLength:    &penisLength,
+				Circumcised:    &circumcised,
 				CareerLength:   careerLength,
 				Tattoos:        tattoos,
 				Piercings:      piercings,
@@ -269,6 +280,7 @@ func Test_PerformerStore_Update(t *testing.T) {
 			&models.Performer{
 				ID:       performerIDs[performerIdxWithGallery],
 				Aliases:  models.NewRelatedStrings([]string{}),
+				URLs:     models.NewRelatedStrings([]string{}),
 				TagIDs:   models.NewRelatedIDs([]int{}),
 				StashIDs: models.NewRelatedStashIDs([]models.StashID{}),
 			},
@@ -327,14 +339,13 @@ func clearPerformerPartial() models.PerformerPartial {
 	nullString := models.OptionalString{Set: true, Null: true}
 	nullDate := models.OptionalDate{Set: true, Null: true}
 	nullInt := models.OptionalInt{Set: true, Null: true}
+	nullFloat := models.OptionalFloat64{Set: true, Null: true}
 
 	// leave mandatory fields
 	return models.PerformerPartial{
 		Disambiguation: nullString,
 		Gender:         nullString,
-		URL:            nullString,
-		Twitter:        nullString,
-		Instagram:      nullString,
+		URLs:           &models.UpdateStrings{Mode: models.RelationshipUpdateModeSet},
 		Birthdate:      nullDate,
 		Ethnicity:      nullString,
 		Country:        nullString,
@@ -342,6 +353,8 @@ func clearPerformerPartial() models.PerformerPartial {
 		Height:         nullInt,
 		Measurements:   nullString,
 		FakeTits:       nullString,
+		PenisLength:    nullFloat,
+		Circumcised:    nullString,
 		CareerLength:   nullString,
 		Tattoos:        nullString,
 		Piercings:      nullString,
@@ -365,6 +378,7 @@ func Test_PerformerStore_UpdatePartial(t *testing.T) {
 		url            = "url"
 		twitter        = "twitter"
 		instagram      = "instagram"
+		urls           = []string{url, twitter, instagram}
 		rating         = 3
 		ethnicity      = "ethnicity"
 		country        = "country"
@@ -372,6 +386,8 @@ func Test_PerformerStore_UpdatePartial(t *testing.T) {
 		height         = 143
 		measurements   = "measurements"
 		fakeTits       = "fakeTits"
+		penisLength    = 1.23
+		circumcised    = models.CircumisedEnumCut
 		careerLength   = "careerLength"
 		tattoos        = "tattoos"
 		piercings      = "piercings"
@@ -387,8 +403,8 @@ func Test_PerformerStore_UpdatePartial(t *testing.T) {
 		createdAt      = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 		updatedAt      = time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
 
-		birthdate = models.NewDate("2003-02-01")
-		deathdate = models.NewDate("2023-02-01")
+		birthdate, _ = models.ParseDate("2003-02-01")
+		deathdate, _ = models.ParseDate("2023-02-01")
 	)
 
 	tests := []struct {
@@ -405,19 +421,22 @@ func Test_PerformerStore_UpdatePartial(t *testing.T) {
 				Name:           models.NewOptionalString(name),
 				Disambiguation: models.NewOptionalString(disambiguation),
 				Gender:         models.NewOptionalString(gender.String()),
-				URL:            models.NewOptionalString(url),
-				Twitter:        models.NewOptionalString(twitter),
-				Instagram:      models.NewOptionalString(instagram),
-				Birthdate:      models.NewOptionalDate(birthdate),
-				Ethnicity:      models.NewOptionalString(ethnicity),
-				Country:        models.NewOptionalString(country),
-				EyeColor:       models.NewOptionalString(eyeColor),
-				Height:         models.NewOptionalInt(height),
-				Measurements:   models.NewOptionalString(measurements),
-				FakeTits:       models.NewOptionalString(fakeTits),
-				CareerLength:   models.NewOptionalString(careerLength),
-				Tattoos:        models.NewOptionalString(tattoos),
-				Piercings:      models.NewOptionalString(piercings),
+				URLs: &models.UpdateStrings{
+					Values: urls,
+					Mode:   models.RelationshipUpdateModeSet,
+				},
+				Birthdate:    models.NewOptionalDate(birthdate),
+				Ethnicity:    models.NewOptionalString(ethnicity),
+				Country:      models.NewOptionalString(country),
+				EyeColor:     models.NewOptionalString(eyeColor),
+				Height:       models.NewOptionalInt(height),
+				Measurements: models.NewOptionalString(measurements),
+				FakeTits:     models.NewOptionalString(fakeTits),
+				PenisLength:  models.NewOptionalFloat64(penisLength),
+				Circumcised:  models.NewOptionalString(circumcised.String()),
+				CareerLength: models.NewOptionalString(careerLength),
+				Tattoos:      models.NewOptionalString(tattoos),
+				Piercings:    models.NewOptionalString(piercings),
 				Aliases: &models.UpdateStrings{
 					Values: aliases,
 					Mode:   models.RelationshipUpdateModeSet,
@@ -453,10 +472,8 @@ func Test_PerformerStore_UpdatePartial(t *testing.T) {
 				ID:             performerIDs[performerIdxWithDupName],
 				Name:           name,
 				Disambiguation: disambiguation,
-				Gender:         gender,
-				URL:            url,
-				Twitter:        twitter,
-				Instagram:      instagram,
+				Gender:         &gender,
+				URLs:           models.NewRelatedStrings(urls),
 				Birthdate:      &birthdate,
 				Ethnicity:      ethnicity,
 				Country:        country,
@@ -464,6 +481,8 @@ func Test_PerformerStore_UpdatePartial(t *testing.T) {
 				Height:         &height,
 				Measurements:   measurements,
 				FakeTits:       fakeTits,
+				PenisLength:    &penisLength,
+				Circumcised:    &circumcised,
 				CareerLength:   careerLength,
 				Tattoos:        tattoos,
 				Piercings:      piercings,
@@ -496,12 +515,14 @@ func Test_PerformerStore_UpdatePartial(t *testing.T) {
 			performerIDs[performerIdxWithTwoTags],
 			clearPerformerPartial(),
 			models.Performer{
-				ID:       performerIDs[performerIdxWithTwoTags],
-				Name:     getPerformerStringValue(performerIdxWithTwoTags, "Name"),
-				Favorite: true,
-				Aliases:  models.NewRelatedStrings([]string{}),
-				TagIDs:   models.NewRelatedIDs([]int{}),
-				StashIDs: models.NewRelatedStashIDs([]models.StashID{}),
+				ID:            performerIDs[performerIdxWithTwoTags],
+				Name:          getPerformerStringValue(performerIdxWithTwoTags, "Name"),
+				Favorite:      getPerformerBoolValue(performerIdxWithTwoTags),
+				URLs:          models.NewRelatedStrings([]string{}),
+				Aliases:       models.NewRelatedStrings([]string{}),
+				TagIDs:        models.NewRelatedIDs([]int{}),
+				StashIDs:      models.NewRelatedStashIDs([]models.StashID{}),
+				IgnoreAutoTag: getIgnoreAutoTag(performerIdxWithTwoTags),
 			},
 			false,
 		},
@@ -713,10 +734,12 @@ func TestPerformerQueryEthnicityOr(t *testing.T) {
 			Value:    performer1Eth,
 			Modifier: models.CriterionModifierEquals,
 		},
-		Or: &models.PerformerFilterType{
-			Ethnicity: &models.StringCriterionInput{
-				Value:    performer2Eth,
-				Modifier: models.CriterionModifierEquals,
+		OperatorFilter: models.OperatorFilter[models.PerformerFilterType]{
+			Or: &models.PerformerFilterType{
+				Ethnicity: &models.StringCriterionInput{
+					Value:    performer2Eth,
+					Modifier: models.CriterionModifierEquals,
+				},
 			},
 		},
 	}
@@ -742,10 +765,12 @@ func TestPerformerQueryEthnicityAndRating(t *testing.T) {
 			Value:    performerEth,
 			Modifier: models.CriterionModifierEquals,
 		},
-		And: &models.PerformerFilterType{
-			Rating100: &models.IntCriterionInput{
-				Value:    performerRating,
-				Modifier: models.CriterionModifierEquals,
+		OperatorFilter: models.OperatorFilter[models.PerformerFilterType]{
+			And: &models.PerformerFilterType{
+				Rating100: &models.IntCriterionInput{
+					Value:    performerRating,
+					Modifier: models.CriterionModifierEquals,
+				},
 			},
 		},
 	}
@@ -783,8 +808,10 @@ func TestPerformerQueryEthnicityNotRating(t *testing.T) {
 
 	performerFilter := models.PerformerFilterType{
 		Ethnicity: &ethCriterion,
-		Not: &models.PerformerFilterType{
-			Rating100: &ratingCriterion,
+		OperatorFilter: models.OperatorFilter[models.PerformerFilterType]{
+			Not: &models.PerformerFilterType{
+				Rating100: &ratingCriterion,
+			},
 		},
 	}
 
@@ -820,24 +847,30 @@ func TestPerformerIllegalQuery(t *testing.T) {
 			// And and Or in the same filter
 			"AndOr",
 			models.PerformerFilterType{
-				And: &subFilter,
-				Or:  &subFilter,
+				OperatorFilter: models.OperatorFilter[models.PerformerFilterType]{
+					And: &subFilter,
+					Or:  &subFilter,
+				},
 			},
 		},
 		{
 			// And and Not in the same filter
 			"AndNot",
 			models.PerformerFilterType{
-				And: &subFilter,
-				Not: &subFilter,
+				OperatorFilter: models.OperatorFilter[models.PerformerFilterType]{
+					And: &subFilter,
+					Not: &subFilter,
+				},
 			},
 		},
 		{
 			// Or and Not in the same filter
 			"OrNot",
 			models.PerformerFilterType{
-				Or:  &subFilter,
-				Not: &subFilter,
+				OperatorFilter: models.OperatorFilter[models.PerformerFilterType]{
+					Or:  &subFilter,
+					Not: &subFilter,
+				},
 			},
 		},
 		{
@@ -957,16 +990,30 @@ func TestPerformerQuery(t *testing.T) {
 			false,
 		},
 		{
-			"alias",
+			"circumcised (cut)",
 			nil,
 			&models.PerformerFilterType{
-				Aliases: &models.StringCriterionInput{
-					Value:    getPerformerStringValue(performerIdxWithGallery, "alias"),
-					Modifier: models.CriterionModifierEquals,
+				Circumcised: &models.CircumcisionCriterionInput{
+					Value:    []models.CircumisedEnum{models.CircumisedEnumCut},
+					Modifier: models.CriterionModifierIncludes,
 				},
 			},
-			[]int{performerIdxWithGallery},
-			[]int{performerIdxWithScene},
+			[]int{performerIdx1WithScene},
+			[]int{performerIdxWithScene, performerIdx2WithScene},
+			false,
+		},
+		{
+			"circumcised (excludes cut)",
+			nil,
+			&models.PerformerFilterType{
+				Circumcised: &models.CircumcisionCriterionInput{
+					Value:    []models.CircumisedEnum{models.CircumisedEnumCut},
+					Modifier: models.CriterionModifierExcludes,
+				},
+			},
+			[]int{performerIdx2WithScene},
+			// performerIdxWithScene has null value
+			[]int{performerIdx1WithScene, performerIdxWithScene},
 			false,
 		},
 	}
@@ -993,6 +1040,107 @@ func TestPerformerQuery(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPerformerQueryPenisLength(t *testing.T) {
+	var upper = 4.0
+
+	tests := []struct {
+		name     string
+		modifier models.CriterionModifier
+		value    float64
+		value2   *float64
+	}{
+		{
+			"equals",
+			models.CriterionModifierEquals,
+			1,
+			nil,
+		},
+		{
+			"not equals",
+			models.CriterionModifierNotEquals,
+			1,
+			nil,
+		},
+		{
+			"greater than",
+			models.CriterionModifierGreaterThan,
+			1,
+			nil,
+		},
+		{
+			"between",
+			models.CriterionModifierBetween,
+			2,
+			&upper,
+		},
+		{
+			"greater than",
+			models.CriterionModifierNotBetween,
+			2,
+			&upper,
+		},
+		{
+			"null",
+			models.CriterionModifierIsNull,
+			0,
+			nil,
+		},
+		{
+			"not null",
+			models.CriterionModifierNotNull,
+			0,
+			nil,
+		},
+	}
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			filter := &models.PerformerFilterType{
+				PenisLength: &models.FloatCriterionInput{
+					Modifier: tt.modifier,
+					Value:    tt.value,
+					Value2:   tt.value2,
+				},
+			}
+
+			performers, _, err := db.Performer.Query(ctx, filter, nil)
+			if err != nil {
+				t.Errorf("PerformerStore.Query() error = %v", err)
+				return
+			}
+
+			for _, p := range performers {
+				verifyFloat(t, p.PenisLength, *filter.PenisLength)
+			}
+		})
+	}
+}
+
+func verifyFloat(t *testing.T, value *float64, criterion models.FloatCriterionInput) bool {
+	t.Helper()
+	assert := assert.New(t)
+	switch criterion.Modifier {
+	case models.CriterionModifierEquals:
+		return assert.NotNil(value) && assert.Equal(criterion.Value, *value)
+	case models.CriterionModifierNotEquals:
+		return assert.NotNil(value) && assert.NotEqual(criterion.Value, *value)
+	case models.CriterionModifierGreaterThan:
+		return assert.NotNil(value) && assert.Greater(*value, criterion.Value)
+	case models.CriterionModifierLessThan:
+		return assert.NotNil(value) && assert.Less(*value, criterion.Value)
+	case models.CriterionModifierBetween:
+		return assert.NotNil(value) && assert.GreaterOrEqual(*value, criterion.Value) && assert.LessOrEqual(*value, *criterion.Value2)
+	case models.CriterionModifierNotBetween:
+		return assert.NotNil(value) && assert.True(*value < criterion.Value || *value > *criterion.Value2)
+	case models.CriterionModifierIsNull:
+		return assert.Nil(value)
+	case models.CriterionModifierNotNull:
+		return assert.NotNil(value)
+	}
+
+	return false
 }
 
 func TestPerformerQueryForAutoTag(t *testing.T) {
@@ -1030,44 +1178,6 @@ func TestPerformerUpdatePerformerImage(t *testing.T) {
 		}
 
 		return testUpdateImage(t, ctx, performer.ID, qb.UpdateImage, qb.GetImage)
-	}); err != nil {
-		t.Error(err.Error())
-	}
-}
-
-func TestPerformerDestroyPerformerImage(t *testing.T) {
-	if err := withRollbackTxn(func(ctx context.Context) error {
-		qb := db.Performer
-
-		// create performer to test against
-		const name = "TestPerformerDestroyPerformerImage"
-		performer := models.Performer{
-			Name: name,
-		}
-		err := qb.Create(ctx, &performer)
-		if err != nil {
-			return fmt.Errorf("Error creating performer: %s", err.Error())
-		}
-
-		image := []byte("image")
-		err = qb.UpdateImage(ctx, performer.ID, image)
-		if err != nil {
-			return fmt.Errorf("Error updating performer image: %s", err.Error())
-		}
-
-		err = qb.DestroyImage(ctx, performer.ID)
-		if err != nil {
-			return fmt.Errorf("Error destroying performer image: %s", err.Error())
-		}
-
-		// image should be nil
-		storedImage, err := qb.GetImage(ctx, performer.ID)
-		if err != nil {
-			return fmt.Errorf("Error getting image: %s", err.Error())
-		}
-		assert.Nil(t, storedImage)
-
-		return nil
 	}); err != nil {
 		t.Error(err.Error())
 	}
@@ -1183,7 +1293,14 @@ func TestPerformerQueryURL(t *testing.T) {
 
 	verifyFn := func(g *models.Performer) {
 		t.Helper()
-		verifyString(t, g.URL, urlCriterion)
+
+		urls := g.URLs.List()
+		var url string
+		if len(urls) > 0 {
+			url = urls[0]
+		}
+
+		verifyString(t, url, urlCriterion)
 	}
 
 	verifyPerformerQuery(t, filter, verifyFn)
@@ -1210,6 +1327,12 @@ func verifyPerformerQuery(t *testing.T, filter models.PerformerFilterType, verif
 	withTxn(func(ctx context.Context) error {
 		t.Helper()
 		performers := queryPerformers(ctx, t, &filter, nil)
+
+		for _, performer := range performers {
+			if err := performer.LoadURLs(ctx, db.Performer); err != nil {
+				t.Errorf("Error loading url relationships: %v", err)
+			}
+		}
 
 		// assume it should find at least one
 		assert.Greater(t, len(performers), 0)
@@ -1624,50 +1747,6 @@ func testPerformerStashIDs(ctx context.Context, t *testing.T, s *models.Performe
 	assert.Len(t, s.StashIDs.List(), 0)
 }
 
-func TestPerformerQueryLegacyRating(t *testing.T) {
-	const rating = 3
-	ratingCriterion := models.IntCriterionInput{
-		Value:    rating,
-		Modifier: models.CriterionModifierEquals,
-	}
-
-	verifyPerformersLegacyRating(t, ratingCriterion)
-
-	ratingCriterion.Modifier = models.CriterionModifierNotEquals
-	verifyPerformersLegacyRating(t, ratingCriterion)
-
-	ratingCriterion.Modifier = models.CriterionModifierGreaterThan
-	verifyPerformersLegacyRating(t, ratingCriterion)
-
-	ratingCriterion.Modifier = models.CriterionModifierLessThan
-	verifyPerformersLegacyRating(t, ratingCriterion)
-
-	ratingCriterion.Modifier = models.CriterionModifierIsNull
-	verifyPerformersLegacyRating(t, ratingCriterion)
-
-	ratingCriterion.Modifier = models.CriterionModifierNotNull
-	verifyPerformersLegacyRating(t, ratingCriterion)
-}
-
-func verifyPerformersLegacyRating(t *testing.T, ratingCriterion models.IntCriterionInput) {
-	withTxn(func(ctx context.Context) error {
-		performerFilter := models.PerformerFilterType{
-			Rating: &ratingCriterion,
-		}
-
-		performers := queryPerformers(ctx, t, &performerFilter, nil)
-
-		// convert criterion value to the 100 value
-		ratingCriterion.Value = models.Rating5To100(ratingCriterion.Value)
-
-		for _, performer := range performers {
-			verifyIntPtr(t, performer.Rating, ratingCriterion)
-		}
-
-		return nil
-	})
-}
-
 func TestPerformerQueryRating100(t *testing.T) {
 	const rating = 60
 	ratingCriterion := models.IntCriterionInput{
@@ -1709,14 +1788,17 @@ func verifyPerformersRating100(t *testing.T, ratingCriterion models.IntCriterion
 	})
 }
 
+func performerQueryIsMissing(ctx context.Context, t *testing.T, m string) []*models.Performer {
+	performerFilter := models.PerformerFilterType{
+		IsMissing: &m,
+	}
+
+	return queryPerformers(ctx, t, &performerFilter, nil)
+}
+
 func TestPerformerQueryIsMissingRating(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		isMissing := "rating"
-		performerFilter := models.PerformerFilterType{
-			IsMissing: &isMissing,
-		}
-
-		performers := queryPerformers(ctx, t, &performerFilter, nil)
+		performers := performerQueryIsMissing(ctx, t, "rating")
 
 		assert.True(t, len(performers) > 0)
 
@@ -1730,16 +1812,7 @@ func TestPerformerQueryIsMissingRating(t *testing.T) {
 
 func TestPerformerQueryIsMissingImage(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
-		isMissing := "image"
-		performerFilter := &models.PerformerFilterType{
-			IsMissing: &isMissing,
-		}
-
-		// ensure query does not error
-		performers, _, err := db.Performer.Query(ctx, performerFilter, nil)
-		if err != nil {
-			t.Errorf("Error querying performers: %s", err.Error())
-		}
+		performers := performerQueryIsMissing(ctx, t, "image")
 
 		assert.True(t, len(performers) > 0)
 
@@ -1749,6 +1822,24 @@ func TestPerformerQueryIsMissingImage(t *testing.T) {
 				t.Errorf("error getting performer image: %s", err.Error())
 			}
 			assert.Nil(t, img)
+		}
+
+		return nil
+	})
+}
+
+func TestPerformerQueryIsMissingAlias(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		performers := performerQueryIsMissing(ctx, t, "aliases")
+
+		assert.True(t, len(performers) > 0)
+
+		for _, performer := range performers {
+			a, err := db.Performer.GetAliases(ctx, performer.ID)
+			if err != nil {
+				t.Errorf("error getting performer aliases: %s", err.Error())
+			}
+			assert.Nil(t, a)
 		}
 
 		return nil
@@ -1772,10 +1863,10 @@ func TestPerformerQuerySortScenesCount(t *testing.T) {
 
 		assert.True(t, len(performers) > 0)
 
-		// first performer should be performerIdxWithTwoScenes
+		// first performer should be performerIdx1WithScene
 		firstPerformer := performers[0]
 
-		assert.Equal(t, performerIDs[performerIdxWithTwoScenes], firstPerformer.ID)
+		assert.Equal(t, performerIDs[performerIdx1WithScene], firstPerformer.ID)
 
 		// sort in ascending order
 		direction = models.SortDirectionEnumAsc
@@ -1788,7 +1879,7 @@ func TestPerformerQuerySortScenesCount(t *testing.T) {
 		assert.True(t, len(performers) > 0)
 		lastPerformer := performers[len(performers)-1]
 
-		assert.Equal(t, performerIDs[performerIdxWithTwoScenes], lastPerformer.ID)
+		assert.Equal(t, performerIDs[performerIdxWithTag], lastPerformer.ID)
 
 		return nil
 	})
@@ -1928,7 +2019,7 @@ func TestPerformerStore_FindByStashIDStatus(t *testing.T) {
 			name:             "!hasStashID",
 			hasStashID:       false,
 			stashboxEndpoint: getPerformerStringValue(performerIdxWithScene, "endpoint"),
-			include:          []int{performerIdxWithImage},
+			include:          []int{performerIdxWithTwoScenes},
 			exclude:          []int{performerIdx2WithScene},
 			wantErr:          false,
 		},

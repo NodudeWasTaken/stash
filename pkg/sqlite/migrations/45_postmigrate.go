@@ -38,7 +38,7 @@ func post45(ctx context.Context, db *sqlx.DB) error {
 			},
 		},
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to migrate images table for tags: %w", err)
 	}
 
 	if err := m.migrateImagesTable(ctx, migrateImagesTableOptions{
@@ -52,7 +52,7 @@ func post45(ctx context.Context, db *sqlx.DB) error {
 			},
 		},
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to migrate images table for studios: %w", err)
 	}
 
 	if err := m.migrateImagesTable(ctx, migrateImagesTableOptions{
@@ -66,7 +66,7 @@ func post45(ctx context.Context, db *sqlx.DB) error {
 			},
 		},
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to migrate images table for performers: %w", err)
 	}
 
 	if err := m.migrateImagesTable(ctx, migrateImagesTableOptions{
@@ -80,7 +80,7 @@ func post45(ctx context.Context, db *sqlx.DB) error {
 			},
 		},
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to migrate images table for scenes: %w", err)
 	}
 
 	if err := m.migrateImagesTable(ctx, migrateImagesTableOptions{
@@ -98,7 +98,7 @@ func post45(ctx context.Context, db *sqlx.DB) error {
 			},
 		},
 	}); err != nil {
-		return err
+		return fmt.Errorf("failed to migrate images table for movies: %w", err)
 	}
 
 	tablesToDrop := []string{
@@ -111,12 +111,12 @@ func post45(ctx context.Context, db *sqlx.DB) error {
 
 	for _, table := range tablesToDrop {
 		if err := m.dropTable(ctx, table); err != nil {
-			return err
+			return fmt.Errorf("failed to drop table %s: %w", table, err)
 		}
 	}
 
 	if err := m.migrateConfig(ctx); err != nil {
-		return err
+		return fmt.Errorf("failed to migrate config: %w", err)
 	}
 
 	return nil
@@ -273,7 +273,7 @@ func (m *schema45Migrator) migrateConfig(ctx context.Context) error {
 	}
 
 	logger.Infof("Setting blobs storage to %s", defaultStorage.String())
-	c.Set(config.BlobsStorage, defaultStorage)
+	c.SetInterface(config.BlobsStorage, defaultStorage)
 	if err := c.Write(); err != nil {
 		logger.Errorf("Error while writing configuration file: %s", err.Error())
 	}
@@ -282,7 +282,7 @@ func (m *schema45Migrator) migrateConfig(ctx context.Context) error {
 	scanDefaults := c.GetDefaultScanSettings()
 	if scanDefaults != nil {
 		scanDefaults.ScanGenerateCovers = true
-		c.Set(config.DefaultScanSettings, scanDefaults)
+		c.SetInterface(config.DefaultScanSettings, scanDefaults)
 		if err := c.Write(); err != nil {
 			logger.Errorf("Error while writing configuration file: %s", err.Error())
 		}

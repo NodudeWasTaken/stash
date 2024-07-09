@@ -1,11 +1,12 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIntl } from "react-intl";
 import * as GQL from "src/core/generated-graphql";
 import NavUtils from "src/utils/navigation";
 import TextUtils from "src/utils/text";
-import { GridCard } from "../Shared/GridCard";
+import { GridCard, calculateCardWidth } from "../Shared/GridCard/GridCard";
 import { CountryFlag } from "../Shared/CountryFlag";
+import { SweatDrops } from "../Shared/SweatDrops";
 import { HoverPopover } from "../Shared/HoverPopover";
 import { Icon } from "../Shared/Icon";
 import { TagLink } from "../Shared/TagLink";
@@ -16,20 +17,24 @@ import {
 } from "src/models/list-filter/criteria/criterion";
 import { PopoverCountButton } from "../Shared/PopoverCountButton";
 import GenderIcon from "./GenderIcon";
-import { faHeart, faTag } from "@fortawesome/free-solid-svg-icons";
+import { faTag } from "@fortawesome/free-solid-svg-icons";
 import { RatingBanner } from "../Shared/RatingBanner";
-import cx from "classnames";
 import { usePerformerUpdate } from "src/core/StashService";
+import { ILabeledId } from "src/models/list-filter/types";
+import ScreenUtils from "src/utils/screen";
+import { FavoriteIcon } from "../Shared/FavoriteIcon";
 
 export interface IPerformerCardExtraCriteria {
-  scenes: Criterion<CriterionValue>[];
-  images: Criterion<CriterionValue>[];
-  galleries: Criterion<CriterionValue>[];
-  movies: Criterion<CriterionValue>[];
+  scenes?: Criterion<CriterionValue>[];
+  images?: Criterion<CriterionValue>[];
+  galleries?: Criterion<CriterionValue>[];
+  groups?: Criterion<CriterionValue>[];
+  performer?: ILabeledId;
 }
 
 interface IPerformerCardProps {
   performer: GQL.PerformerDataFragment;
+  containerWidth?: number;
   ageFromDate?: string;
   selecting?: boolean;
   selected?: boolean;
@@ -39,6 +44,7 @@ interface IPerformerCardProps {
 
 export const PerformerCard: React.FC<IPerformerCardProps> = ({
   performer,
+  containerWidth,
   ageFromDate,
   selecting,
   selected,
@@ -63,24 +69,18 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
   );
 
   const [updatePerformer] = usePerformerUpdate();
+  const [cardWidth, setCardWidth] = useState<number>();
 
-  function renderFavoriteIcon() {
-    return (
-      <Link to="" onClick={(e) => e.preventDefault()}>
-        <Button
-          className={cx(
-            "minimal",
-            "mousetrap",
-            "favorite-button",
-            performer.favorite ? "favorite" : "not-favorite"
-          )}
-          onClick={() => onToggleFavorite!(!performer.favorite)}
-        >
-          <Icon icon={faHeart} size="2x" />
-        </Button>
-      </Link>
+  useEffect(() => {
+    if (!containerWidth || ScreenUtils.isMobile()) return;
+
+    let preferredCardWidth = 300;
+    let fittedCardWidth = calculateCardWidth(
+      containerWidth,
+      preferredCardWidth!
     );
-  }
+    setCardWidth(fittedCardWidth);
+  }, [containerWidth]);
 
   function onToggleFavorite(v: boolean) {
     if (performer.id) {
@@ -103,7 +103,11 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
         className="scene-count"
         type="scene"
         count={performer.scene_count}
-        url={NavUtils.makePerformerScenesUrl(performer, extraCriteria?.scenes)}
+        url={NavUtils.makePerformerScenesUrl(
+          performer,
+          extraCriteria?.performer,
+          extraCriteria?.scenes
+        )}
       />
     );
   }
@@ -116,7 +120,11 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
         className="image-count"
         type="image"
         count={performer.image_count}
-        url={NavUtils.makePerformerImagesUrl(performer, extraCriteria?.images)}
+        url={NavUtils.makePerformerImagesUrl(
+          performer,
+          extraCriteria?.performer,
+          extraCriteria?.images
+        )}
       />
     );
   }
@@ -131,9 +139,25 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
         count={performer.gallery_count}
         url={NavUtils.makePerformerGalleriesUrl(
           performer,
+          extraCriteria?.performer,
           extraCriteria?.galleries
         )}
       />
+    );
+  }
+
+  function maybeRenderOCounter() {
+    if (!performer.o_counter) return;
+
+    return (
+      <div className="o-counter">
+        <Button className="minimal">
+          <span className="fa-icon">
+            <SweatDrops />
+          </span>
+          <span>{performer.o_counter}</span>
+        </Button>
+      </div>
     );
   }
 
@@ -141,7 +165,7 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
     if (performer.tags.length <= 0) return;
 
     const popoverContent = performer.tags.map((tag) => (
-      <TagLink key={tag.id} tagType="performer" tag={tag} />
+      <TagLink key={tag.id} linkType="performer" tag={tag} />
     ));
 
     return (
@@ -154,15 +178,19 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
     );
   }
 
-  function maybeRenderMoviesPopoverButton() {
-    if (!performer.movie_count) return;
+  function maybeRenderGroupsPopoverButton() {
+    if (!performer.group_count) return;
 
     return (
       <PopoverCountButton
-        className="movie-count"
-        type="movie"
-        count={performer.movie_count}
-        url={NavUtils.makePerformerMoviesUrl(performer, extraCriteria?.movies)}
+        className="group-count"
+        type="group"
+        count={performer.group_count}
+        url={NavUtils.makePerformerGroupsUrl(
+          performer,
+          extraCriteria?.performer,
+          extraCriteria?.groups
+        )}
       />
     );
   }
@@ -173,17 +201,19 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
       performer.image_count ||
       performer.gallery_count ||
       performer.tags.length > 0 ||
-      performer.movie_count
+      performer.o_counter ||
+      performer.group_count
     ) {
       return (
         <>
           <hr />
           <ButtonGroup className="card-popovers">
             {maybeRenderScenesPopoverButton()}
-            {maybeRenderMoviesPopoverButton()}
+            {maybeRenderGroupsPopoverButton()}
             {maybeRenderImagesPopoverButton()}
             {maybeRenderGalleriesPopoverButton()}
             {maybeRenderTagPopoverButton()}
+            {maybeRenderOCounter()}
           </ButtonGroup>
         </>
       );
@@ -204,6 +234,7 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
           <CountryFlag
             className="performer-card__country-flag"
             country={performer.country}
+            includeOverlay
           />
           <span className="performer-card__country-string">
             {performer.country}
@@ -217,6 +248,7 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
     <GridCard
       className="performer-card"
       url={`/performers/${performer.id}`}
+      width={cardWidth}
       pretitleIcon={
         <GenderIcon className="gender-icon" gender={performer.gender} />
       }
@@ -233,12 +265,21 @@ export const PerformerCard: React.FC<IPerformerCardProps> = ({
       image={
         <>
           <img
+            loading="lazy"
             className="performer-card-image"
             alt={performer.name ?? ""}
             src={performer.image_path ?? ""}
           />
-
-          {renderFavoriteIcon()}
+        </>
+      }
+      overlays={
+        <>
+          <FavoriteIcon
+            favorite={performer.favorite}
+            onToggleFavorite={onToggleFavorite}
+            size="2x"
+            className="hide-not-favorite"
+          />
           {maybeRenderRatingBanner()}
           {maybeRenderFlag()}
         </>

@@ -2,12 +2,14 @@ package models
 
 import (
 	"context"
-
-	"github.com/stashapp/stash/pkg/file"
 )
 
 type SceneIDLoader interface {
 	GetSceneIDs(ctx context.Context, relatedID int) ([]int, error)
+}
+
+type ImageIDLoader interface {
+	GetImageIDs(ctx context.Context, relatedID int) ([]int, error)
 }
 
 type GalleryIDLoader interface {
@@ -22,8 +24,17 @@ type TagIDLoader interface {
 	GetTagIDs(ctx context.Context, relatedID int) ([]int, error)
 }
 
-type SceneMovieLoader interface {
-	GetMovies(ctx context.Context, id int) ([]MoviesScenes, error)
+type TagRelationLoader interface {
+	GetParentIDs(ctx context.Context, relatedID int) ([]int, error)
+	GetChildIDs(ctx context.Context, relatedID int) ([]int, error)
+}
+
+type FileIDLoader interface {
+	GetManyFileIDs(ctx context.Context, ids []int) ([][]FileID, error)
+}
+
+type SceneGroupLoader interface {
+	GetGroups(ctx context.Context, id int) ([]GroupsScenes, error)
 }
 
 type StashIDLoader interface {
@@ -31,19 +42,19 @@ type StashIDLoader interface {
 }
 
 type VideoFileLoader interface {
-	GetFiles(ctx context.Context, relatedID int) ([]*file.VideoFile, error)
-}
-
-type ImageFileLoader interface {
-	GetFiles(ctx context.Context, relatedID int) ([]*file.ImageFile, error)
+	GetFiles(ctx context.Context, relatedID int) ([]*VideoFile, error)
 }
 
 type FileLoader interface {
-	GetFiles(ctx context.Context, relatedID int) ([]file.File, error)
+	GetFiles(ctx context.Context, relatedID int) ([]File, error)
 }
 
 type AliasLoader interface {
 	GetAliases(ctx context.Context, relatedID int) ([]string, error)
+}
+
+type URLLoader interface {
+	GetURLs(ctx context.Context, relatedID int) ([]string, error)
 }
 
 // RelatedIDs represents a list of related IDs.
@@ -104,50 +115,50 @@ func (r *RelatedIDs) load(fn func() ([]int, error)) error {
 	return nil
 }
 
-// RelatedMovies represents a list of related Movies.
-type RelatedMovies struct {
-	list []MoviesScenes
+// RelatedGroups represents a list of related Groups.
+type RelatedGroups struct {
+	list []GroupsScenes
 }
 
-// NewRelatedMovies returns a loaded RelatedMovies object with the provided movies.
+// NewRelatedGroups returns a loaded RelateGroups object with the provided groups.
 // Loaded will return true when called on the returned object if the provided slice is not nil.
-func NewRelatedMovies(list []MoviesScenes) RelatedMovies {
-	return RelatedMovies{
+func NewRelatedGroups(list []GroupsScenes) RelatedGroups {
+	return RelatedGroups{
 		list: list,
 	}
 }
 
 // Loaded returns true if the relationship has been loaded.
-func (r RelatedMovies) Loaded() bool {
+func (r RelatedGroups) Loaded() bool {
 	return r.list != nil
 }
 
-func (r RelatedMovies) mustLoaded() {
+func (r RelatedGroups) mustLoaded() {
 	if !r.Loaded() {
 		panic("list has not been loaded")
 	}
 }
 
-// List returns the related Movies. Panics if the relationship has not been loaded.
-func (r RelatedMovies) List() []MoviesScenes {
+// List returns the related Groups. Panics if the relationship has not been loaded.
+func (r RelatedGroups) List() []GroupsScenes {
 	r.mustLoaded()
 
 	return r.list
 }
 
 // Add adds the provided ids to the list. Panics if the relationship has not been loaded.
-func (r *RelatedMovies) Add(movies ...MoviesScenes) {
+func (r *RelatedGroups) Add(groups ...GroupsScenes) {
 	r.mustLoaded()
 
-	r.list = append(r.list, movies...)
+	r.list = append(r.list, groups...)
 }
 
-// ForID returns the MoviesScenes object for the given movie ID. Returns nil if not found.
-func (r *RelatedMovies) ForID(id int) *MoviesScenes {
+// ForID returns the GroupsScenes object for the given group ID. Returns nil if not found.
+func (r *RelatedGroups) ForID(id int) *GroupsScenes {
 	r.mustLoaded()
 
 	for _, v := range r.list {
-		if v.MovieID == id {
+		if v.GroupID == id {
 			return &v
 		}
 	}
@@ -155,7 +166,7 @@ func (r *RelatedMovies) ForID(id int) *MoviesScenes {
 	return nil
 }
 
-func (r *RelatedMovies) load(fn func() ([]MoviesScenes, error)) error {
+func (r *RelatedGroups) load(fn func() ([]GroupsScenes, error)) error {
 	if r.Loaded() {
 		return nil
 	}
@@ -166,7 +177,7 @@ func (r *RelatedMovies) load(fn func() ([]MoviesScenes, error)) error {
 	}
 
 	if ids == nil {
-		ids = []MoviesScenes{}
+		ids = []GroupsScenes{}
 	}
 
 	r.list = ids
@@ -204,6 +215,19 @@ func (r RelatedStashIDs) List() []StashID {
 	return r.list
 }
 
+// ForID returns the StashID object for the given endpoint. Returns nil if not found.
+func (r *RelatedStashIDs) ForEndpoint(endpoint string) *StashID {
+	r.mustLoaded()
+
+	for _, v := range r.list {
+		if v.Endpoint == endpoint {
+			return &v
+		}
+	}
+
+	return nil
+}
+
 func (r *RelatedStashIDs) load(fn func() ([]StashID, error)) error {
 	if r.Loaded() {
 		return nil
@@ -224,12 +248,12 @@ func (r *RelatedStashIDs) load(fn func() ([]StashID, error)) error {
 }
 
 type RelatedVideoFiles struct {
-	primaryFile   *file.VideoFile
-	files         []*file.VideoFile
+	primaryFile   *VideoFile
+	files         []*VideoFile
 	primaryLoaded bool
 }
 
-func NewRelatedVideoFiles(files []*file.VideoFile) RelatedVideoFiles {
+func NewRelatedVideoFiles(files []*VideoFile) RelatedVideoFiles {
 	ret := RelatedVideoFiles{
 		files:         files,
 		primaryLoaded: true,
@@ -242,12 +266,12 @@ func NewRelatedVideoFiles(files []*file.VideoFile) RelatedVideoFiles {
 	return ret
 }
 
-func (r *RelatedVideoFiles) SetPrimary(f *file.VideoFile) {
+func (r *RelatedVideoFiles) SetPrimary(f *VideoFile) {
 	r.primaryFile = f
 	r.primaryLoaded = true
 }
 
-func (r *RelatedVideoFiles) Set(f []*file.VideoFile) {
+func (r *RelatedVideoFiles) Set(f []*VideoFile) {
 	r.files = f
 	if len(r.files) > 0 {
 		r.primaryFile = r.files[0]
@@ -267,7 +291,7 @@ func (r RelatedVideoFiles) PrimaryLoaded() bool {
 }
 
 // List returns the related files. Panics if the relationship has not been loaded.
-func (r RelatedVideoFiles) List() []*file.VideoFile {
+func (r RelatedVideoFiles) List() []*VideoFile {
 	if !r.Loaded() {
 		panic("relationship has not been loaded")
 	}
@@ -276,7 +300,7 @@ func (r RelatedVideoFiles) List() []*file.VideoFile {
 }
 
 // Primary returns the primary file. Panics if the relationship has not been loaded.
-func (r RelatedVideoFiles) Primary() *file.VideoFile {
+func (r RelatedVideoFiles) Primary() *VideoFile {
 	if !r.PrimaryLoaded() {
 		panic("relationship has not been loaded")
 	}
@@ -284,7 +308,7 @@ func (r RelatedVideoFiles) Primary() *file.VideoFile {
 	return r.primaryFile
 }
 
-func (r *RelatedVideoFiles) load(fn func() ([]*file.VideoFile, error)) error {
+func (r *RelatedVideoFiles) load(fn func() ([]*VideoFile, error)) error {
 	if r.Loaded() {
 		return nil
 	}
@@ -304,90 +328,7 @@ func (r *RelatedVideoFiles) load(fn func() ([]*file.VideoFile, error)) error {
 	return nil
 }
 
-func (r *RelatedVideoFiles) loadPrimary(fn func() (*file.VideoFile, error)) error {
-	if r.PrimaryLoaded() {
-		return nil
-	}
-
-	var err error
-	r.primaryFile, err = fn()
-	if err != nil {
-		return err
-	}
-
-	r.primaryLoaded = true
-
-	return nil
-}
-
-type RelatedImageFiles struct {
-	primaryFile   *file.ImageFile
-	files         []*file.ImageFile
-	primaryLoaded bool
-}
-
-func NewRelatedImageFiles(files []*file.ImageFile) RelatedImageFiles {
-	ret := RelatedImageFiles{
-		files:         files,
-		primaryLoaded: true,
-	}
-
-	if len(files) > 0 {
-		ret.primaryFile = files[0]
-	}
-
-	return ret
-}
-
-// Loaded returns true if the relationship has been loaded.
-func (r RelatedImageFiles) Loaded() bool {
-	return r.files != nil
-}
-
-// Loaded returns true if the primary file relationship has been loaded.
-func (r RelatedImageFiles) PrimaryLoaded() bool {
-	return r.primaryLoaded
-}
-
-// List returns the related files. Panics if the relationship has not been loaded.
-func (r RelatedImageFiles) List() []*file.ImageFile {
-	if !r.Loaded() {
-		panic("relationship has not been loaded")
-	}
-
-	return r.files
-}
-
-// Primary returns the primary file. Panics if the relationship has not been loaded.
-func (r RelatedImageFiles) Primary() *file.ImageFile {
-	if !r.PrimaryLoaded() {
-		panic("relationship has not been loaded")
-	}
-
-	return r.primaryFile
-}
-
-func (r *RelatedImageFiles) load(fn func() ([]*file.ImageFile, error)) error {
-	if r.Loaded() {
-		return nil
-	}
-
-	var err error
-	r.files, err = fn()
-	if err != nil {
-		return err
-	}
-
-	if len(r.files) > 0 {
-		r.primaryFile = r.files[0]
-	}
-
-	r.primaryLoaded = true
-
-	return nil
-}
-
-func (r *RelatedImageFiles) loadPrimary(fn func() (*file.ImageFile, error)) error {
+func (r *RelatedVideoFiles) loadPrimary(fn func() (*VideoFile, error)) error {
 	if r.PrimaryLoaded() {
 		return nil
 	}
@@ -404,12 +345,12 @@ func (r *RelatedImageFiles) loadPrimary(fn func() (*file.ImageFile, error)) erro
 }
 
 type RelatedFiles struct {
-	primaryFile   file.File
-	files         []file.File
+	primaryFile   File
+	files         []File
 	primaryLoaded bool
 }
 
-func NewRelatedFiles(files []file.File) RelatedFiles {
+func NewRelatedFiles(files []File) RelatedFiles {
 	ret := RelatedFiles{
 		files:         files,
 		primaryLoaded: true,
@@ -433,7 +374,7 @@ func (r RelatedFiles) PrimaryLoaded() bool {
 }
 
 // List returns the related files. Panics if the relationship has not been loaded.
-func (r RelatedFiles) List() []file.File {
+func (r RelatedFiles) List() []File {
 	if !r.Loaded() {
 		panic("relationship has not been loaded")
 	}
@@ -442,7 +383,7 @@ func (r RelatedFiles) List() []file.File {
 }
 
 // Primary returns the primary file. Panics if the relationship has not been loaded.
-func (r RelatedFiles) Primary() file.File {
+func (r RelatedFiles) Primary() File {
 	if !r.PrimaryLoaded() {
 		panic("relationship has not been loaded")
 	}
@@ -450,7 +391,7 @@ func (r RelatedFiles) Primary() file.File {
 	return r.primaryFile
 }
 
-func (r *RelatedFiles) load(fn func() ([]file.File, error)) error {
+func (r *RelatedFiles) load(fn func() ([]File, error)) error {
 	if r.Loaded() {
 		return nil
 	}
@@ -470,7 +411,7 @@ func (r *RelatedFiles) load(fn func() ([]file.File, error)) error {
 	return nil
 }
 
-func (r *RelatedFiles) loadPrimary(fn func() (file.File, error)) error {
+func (r *RelatedFiles) loadPrimary(fn func() (File, error)) error {
 	if r.PrimaryLoaded() {
 		return nil
 	}

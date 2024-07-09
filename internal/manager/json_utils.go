@@ -11,14 +11,6 @@ type jsonUtils struct {
 	json paths.JSONPaths
 }
 
-func (jp *jsonUtils) getScraped() ([]jsonschema.ScrapedItem, error) {
-	return jsonschema.LoadScrapedFile(jp.json.ScrapedFile)
-}
-
-func (jp *jsonUtils) saveScaped(scraped []jsonschema.ScrapedItem) error {
-	return jsonschema.SaveScrapedFile(jp.json.ScrapedFile, scraped)
-}
-
 func (jp *jsonUtils) savePerformer(fn string, performer *jsonschema.Performer) error {
 	return jsonschema.SavePerformerFile(filepath.Join(jp.json.Performers, fn), performer)
 }
@@ -31,8 +23,8 @@ func (jp *jsonUtils) saveTag(fn string, tag *jsonschema.Tag) error {
 	return jsonschema.SaveTagFile(filepath.Join(jp.json.Tags, fn), tag)
 }
 
-func (jp *jsonUtils) saveMovie(fn string, movie *jsonschema.Movie) error {
-	return jsonschema.SaveMovieFile(filepath.Join(jp.json.Movies, fn), movie)
+func (jp *jsonUtils) saveGroup(fn string, group *jsonschema.Group) error {
+	return jsonschema.SaveGroupFile(filepath.Join(jp.json.Groups, fn), group)
 }
 
 func (jp *jsonUtils) saveScene(fn string, scene *jsonschema.Scene) error {

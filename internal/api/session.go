@@ -1,22 +1,26 @@
 package api
 
 import (
-	"embed"
+	"bytes"
 	"errors"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"net/http"
+	"strings"
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
+	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/session"
+	"github.com/stashapp/stash/pkg/utils"
+	"github.com/stashapp/stash/ui"
 )
 
-const loginRootDir = "login"
 const returnURLParam = "returnURL"
 
-func getLoginPage(loginUIBox embed.FS) []byte {
-	data, err := loginUIBox.ReadFile(loginRootDir + "/login.html")
+func getLoginPage() []byte {
+	data, err := fs.ReadFile(ui.LoginUIBox, "login.html")
 	if err != nil {
 		panic(err)
 	}
@@ -28,42 +32,68 @@ type loginTemplateData struct {
 	Error string
 }
 
-func redirectToLogin(loginUIBox embed.FS, w http.ResponseWriter, returnURL string, loginError string) {
-	data := getLoginPage(loginUIBox)
-	templ, err := template.New("Login").Parse(string(data))
+func serveLoginPage(w http.ResponseWriter, r *http.Request, returnURL string, loginError string) {
+	loginPage := string(getLoginPage())
+	prefix := getProxyPrefix(r)
+	loginPage = strings.ReplaceAll(loginPage, "/%BASE_URL%", prefix)
+
+	templ, err := template.New("Login").Parse(loginPage)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error: %s", err), http.StatusInternalServerError)
 		return
 	}
 
-	err = templ.Execute(w, loginTemplateData{URL: returnURL, Error: loginError})
+	buffer := bytes.Buffer{}
+	err = templ.Execute(&buffer, loginTemplateData{URL: returnURL, Error: loginError})
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error: %s", err), http.StatusInternalServerError)
+		return
 	}
+
+	w.Header().Set("Content-Type", "text/html")
+
+	// we shouldn't need to set plugin exceptions here
+	setPageSecurityHeaders(w, r, nil)
+
+	utils.ServeStaticContent(w, r, buffer.Bytes())
 }
 
-func getLoginHandler(loginUIBox embed.FS) http.HandlerFunc {
+func handleLogin() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		returnURL := r.URL.Query().Get(returnURLParam)
+
 		if !config.GetInstance().HasCredentials() {
-			http.Redirect(w, r, "/", http.StatusFound)
+			if returnURL != "" {
+				http.Redirect(w, r, returnURL, http.StatusFound)
+			} else {
+				prefix := getProxyPrefix(r)
+				http.Redirect(w, r, prefix+"/", http.StatusFound)
+			}
 			return
 		}
 
-		redirectToLogin(loginUIBox, w, r.URL.Query().Get(returnURLParam), "")
+		serveLoginPage(w, r, returnURL, "")
 	}
 }
 
-func handleLogin(loginUIBox embed.FS) http.HandlerFunc {
+func handleLoginPost() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		url := r.FormValue(returnURLParam)
 		if url == "" {
-			url = "/"
+			url = getProxyPrefix(r) + "/"
 		}
 
 		err := manager.GetInstance().SessionStore.Login(w, r)
-		if errors.Is(err, session.ErrInvalidCredentials) {
-			// redirect back to the login page with an error
-			redirectToLogin(loginUIBox, w, url, "Username or password is invalid")
+		if err != nil {
+			// always log the error
+			logger.Errorf("Error logging in: %v", err)
+		}
+
+		var invalidCredentialsError *session.InvalidCredentialsError
+
+		if errors.As(err, &invalidCredentialsError) {
+			// serve login page with an error
+			serveLoginPage(w, r, url, "Username or password is invalid")
 			return
 		}
 
@@ -76,7 +106,7 @@ func handleLogin(loginUIBox embed.FS) http.HandlerFunc {
 	}
 }
 
-func handleLogout(loginUIBox embed.FS) http.HandlerFunc {
+func handleLogout() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := manager.GetInstance().SessionStore.Logout(w, r); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -84,6 +114,11 @@ func handleLogout(loginUIBox embed.FS) http.HandlerFunc {
 		}
 
 		// redirect to the login page if credentials are required
-		getLoginHandler(loginUIBox)(w, r)
+		prefix := getProxyPrefix(r)
+		if config.GetInstance().HasCredentials() {
+			http.Redirect(w, r, prefix+loginEndpoint, http.StatusFound)
+		} else {
+			http.Redirect(w, r, prefix+"/", http.StatusFound)
+		}
 	}
 }

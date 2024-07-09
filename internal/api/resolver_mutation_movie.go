@@ -2,21 +2,20 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"strconv"
-	"time"
 
-	"github.com/stashapp/stash/pkg/hash/md5"
+	"github.com/stashapp/stash/internal/static"
 	"github.com/stashapp/stash/pkg/models"
-	"github.com/stashapp/stash/pkg/plugin"
+	"github.com/stashapp/stash/pkg/plugin/hook"
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/utils"
 )
 
-func (r *mutationResolver) getMovie(ctx context.Context, id int) (ret *models.Movie, err error) {
+// used to refetch group after hooks run
+func (r *mutationResolver) getGroup(ctx context.Context, id int) (ret *models.Group, err error) {
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		ret, err = r.repository.Movie.Find(ctx, id)
+		ret, err = r.repository.Group.Find(ctx, id)
 		return err
 	}); err != nil {
 		return nil, err
@@ -25,99 +24,85 @@ func (r *mutationResolver) getMovie(ctx context.Context, id int) (ret *models.Mo
 	return ret, nil
 }
 
-func (r *mutationResolver) MovieCreate(ctx context.Context, input MovieCreateInput) (*models.Movie, error) {
-	// generate checksum from movie name rather than image
-	checksum := md5.FromString(input.Name)
+func (r *mutationResolver) MovieCreate(ctx context.Context, input MovieCreateInput) (*models.Group, error) {
+	translator := changesetTranslator{
+		inputMap: getUpdateInputMap(ctx),
+	}
 
-	var frontimageData []byte
-	var backimageData []byte
+	// Populate a new group from the input
+	newGroup := models.NewGroup()
+
+	newGroup.Name = input.Name
+	newGroup.Aliases = translator.string(input.Aliases)
+	newGroup.Duration = input.Duration
+	newGroup.Rating = input.Rating100
+	newGroup.Director = translator.string(input.Director)
+	newGroup.Synopsis = translator.string(input.Synopsis)
+
 	var err error
 
-	// HACK: if back image is being set, set the front image to the default.
-	// This is because we can't have a null front image with a non-null back image.
-	if input.FrontImage == nil && input.BackImage != nil {
-		input.FrontImage = &models.DefaultMovieImage
+	newGroup.Date, err = translator.datePtr(input.Date)
+	if err != nil {
+		return nil, fmt.Errorf("converting date: %w", err)
+	}
+	newGroup.StudioID, err = translator.intPtrFromString(input.StudioID)
+	if err != nil {
+		return nil, fmt.Errorf("converting studio id: %w", err)
+	}
+
+	newGroup.TagIDs, err = translator.relatedIds(input.TagIds)
+	if err != nil {
+		return nil, fmt.Errorf("converting tag ids: %w", err)
+	}
+
+	if input.Urls != nil {
+		newGroup.URLs = models.NewRelatedStrings(input.Urls)
+	} else if input.URL != nil {
+		newGroup.URLs = models.NewRelatedStrings([]string{*input.URL})
 	}
 
 	// Process the base 64 encoded image string
+	var frontimageData []byte
 	if input.FrontImage != nil {
 		frontimageData, err = utils.ProcessImageInput(ctx, *input.FrontImage)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("processing front image: %w", err)
 		}
 	}
 
 	// Process the base 64 encoded image string
+	var backimageData []byte
 	if input.BackImage != nil {
 		backimageData, err = utils.ProcessImageInput(ctx, *input.BackImage)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("processing back image: %w", err)
 		}
 	}
 
-	// Populate a new movie from the input
-	currentTime := time.Now()
-	newMovie := models.Movie{
-		Checksum:  checksum,
-		Name:      sql.NullString{String: input.Name, Valid: true},
-		CreatedAt: models.SQLiteTimestamp{Timestamp: currentTime},
-		UpdatedAt: models.SQLiteTimestamp{Timestamp: currentTime},
+	// HACK: if back image is being set, set the front image to the default.
+	// This is because we can't have a null front image with a non-null back image.
+	if len(frontimageData) == 0 && len(backimageData) != 0 {
+		frontimageData = static.ReadAll(static.DefaultGroupImage)
 	}
 
-	if input.Aliases != nil {
-		newMovie.Aliases = sql.NullString{String: *input.Aliases, Valid: true}
-	}
-	if input.Duration != nil {
-		duration := int64(*input.Duration)
-		newMovie.Duration = sql.NullInt64{Int64: duration, Valid: true}
-	}
-
-	if input.Date != nil {
-		newMovie.Date = models.SQLiteDate{String: *input.Date, Valid: true}
-	}
-
-	if input.Rating100 != nil {
-		newMovie.Rating = sql.NullInt64{Int64: int64(*input.Rating100), Valid: true}
-	} else if input.Rating != nil {
-		rating := models.Rating5To100(*input.Rating)
-		newMovie.Rating = sql.NullInt64{Int64: int64(rating), Valid: true}
-	}
-
-	if input.StudioID != nil {
-		studioID, _ := strconv.ParseInt(*input.StudioID, 10, 64)
-		newMovie.StudioID = sql.NullInt64{Int64: studioID, Valid: true}
-	}
-
-	if input.Director != nil {
-		newMovie.Director = sql.NullString{String: *input.Director, Valid: true}
-	}
-
-	if input.Synopsis != nil {
-		newMovie.Synopsis = sql.NullString{String: *input.Synopsis, Valid: true}
-	}
-
-	if input.URL != nil {
-		newMovie.URL = sql.NullString{String: *input.URL, Valid: true}
-	}
-
-	// Start the transaction and save the movie
-	var movie *models.Movie
+	// Start the transaction and save the group
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		qb := r.repository.Movie
-		movie, err = qb.Create(ctx, newMovie)
+		qb := r.repository.Group
+
+		err = qb.Create(ctx, &newGroup)
 		if err != nil {
 			return err
 		}
 
 		// update image table
 		if len(frontimageData) > 0 {
-			if err := qb.UpdateFrontImage(ctx, movie.ID, frontimageData); err != nil {
+			if err := qb.UpdateFrontImage(ctx, newGroup.ID, frontimageData); err != nil {
 				return err
 			}
 		}
 
 		if len(backimageData) > 0 {
-			if err := qb.UpdateBackImage(ctx, movie.ID, backimageData); err != nil {
+			if err := qb.UpdateBackImage(ctx, newGroup.ID, backimageData); err != nil {
 				return err
 			}
 		}
@@ -127,77 +112,84 @@ func (r *mutationResolver) MovieCreate(ctx context.Context, input MovieCreateInp
 		return nil, err
 	}
 
-	r.hookExecutor.ExecutePostHooks(ctx, movie.ID, plugin.MovieCreatePost, input, nil)
-	return r.getMovie(ctx, movie.ID)
+	// for backwards compatibility - run both movie and group hooks
+	r.hookExecutor.ExecutePostHooks(ctx, newGroup.ID, hook.GroupCreatePost, input, nil)
+	r.hookExecutor.ExecutePostHooks(ctx, newGroup.ID, hook.MovieCreatePost, input, nil)
+	return r.getGroup(ctx, newGroup.ID)
 }
 
-func (r *mutationResolver) MovieUpdate(ctx context.Context, input MovieUpdateInput) (*models.Movie, error) {
-	// Populate movie from the input
-	movieID, err := strconv.Atoi(input.ID)
+func (r *mutationResolver) MovieUpdate(ctx context.Context, input MovieUpdateInput) (*models.Group, error) {
+	groupID, err := strconv.Atoi(input.ID)
 	if err != nil {
-		return nil, err
-	}
-
-	updatedMovie := models.MoviePartial{
-		ID:        movieID,
-		UpdatedAt: &models.SQLiteTimestamp{Timestamp: time.Now()},
+		return nil, fmt.Errorf("converting id: %w", err)
 	}
 
 	translator := changesetTranslator{
 		inputMap: getUpdateInputMap(ctx),
 	}
+
+	// Populate group from the input
+	updatedGroup := models.NewGroupPartial()
+
+	updatedGroup.Name = translator.optionalString(input.Name, "name")
+	updatedGroup.Aliases = translator.optionalString(input.Aliases, "aliases")
+	updatedGroup.Duration = translator.optionalInt(input.Duration, "duration")
+	updatedGroup.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedGroup.Director = translator.optionalString(input.Director, "director")
+	updatedGroup.Synopsis = translator.optionalString(input.Synopsis, "synopsis")
+
+	updatedGroup.Date, err = translator.optionalDate(input.Date, "date")
+	if err != nil {
+		return nil, fmt.Errorf("converting date: %w", err)
+	}
+	updatedGroup.StudioID, err = translator.optionalIntFromString(input.StudioID, "studio_id")
+	if err != nil {
+		return nil, fmt.Errorf("converting studio id: %w", err)
+	}
+
+	updatedGroup.TagIDs, err = translator.updateIds(input.TagIds, "tag_ids")
+	if err != nil {
+		return nil, fmt.Errorf("converting tag ids: %w", err)
+	}
+
+	updatedGroup.URLs = translator.optionalURLs(input.Urls, input.URL)
 
 	var frontimageData []byte
 	frontImageIncluded := translator.hasField("front_image")
 	if input.FrontImage != nil {
 		frontimageData, err = utils.ProcessImageInput(ctx, *input.FrontImage)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("processing front image: %w", err)
 		}
 	}
-	backImageIncluded := translator.hasField("back_image")
+
 	var backimageData []byte
+	backImageIncluded := translator.hasField("back_image")
 	if input.BackImage != nil {
 		backimageData, err = utils.ProcessImageInput(ctx, *input.BackImage)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("processing back image: %w", err)
 		}
 	}
 
-	if input.Name != nil {
-		// generate checksum from movie name rather than image
-		checksum := md5.FromString(*input.Name)
-		updatedMovie.Name = &sql.NullString{String: *input.Name, Valid: true}
-		updatedMovie.Checksum = &checksum
-	}
-
-	updatedMovie.Aliases = translator.nullString(input.Aliases, "aliases")
-	updatedMovie.Duration = translator.nullInt64(input.Duration, "duration")
-	updatedMovie.Date = translator.sqliteDate(input.Date, "date")
-	updatedMovie.Rating = translator.ratingConversion(input.Rating, input.Rating100)
-	updatedMovie.StudioID = translator.nullInt64FromString(input.StudioID, "studio_id")
-	updatedMovie.Director = translator.nullString(input.Director, "director")
-	updatedMovie.Synopsis = translator.nullString(input.Synopsis, "synopsis")
-	updatedMovie.URL = translator.nullString(input.URL, "url")
-
-	// Start the transaction and save the movie
-	var movie *models.Movie
+	// Start the transaction and save the group
+	var group *models.Group
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		qb := r.repository.Movie
-		movie, err = qb.Update(ctx, updatedMovie)
+		qb := r.repository.Group
+		group, err = qb.UpdatePartial(ctx, groupID, updatedGroup)
 		if err != nil {
 			return err
 		}
 
 		// update image table
 		if frontImageIncluded {
-			if err := qb.UpdateFrontImage(ctx, movie.ID, frontimageData); err != nil {
+			if err := qb.UpdateFrontImage(ctx, group.ID, frontimageData); err != nil {
 				return err
 			}
 		}
 
 		if backImageIncluded {
-			if err := qb.UpdateBackImage(ctx, movie.ID, backimageData); err != nil {
+			if err := qb.UpdateBackImage(ctx, group.ID, backimageData); err != nil {
 				return err
 			}
 		}
@@ -207,53 +199,52 @@ func (r *mutationResolver) MovieUpdate(ctx context.Context, input MovieUpdateInp
 		return nil, err
 	}
 
-	r.hookExecutor.ExecutePostHooks(ctx, movie.ID, plugin.MovieUpdatePost, input, translator.getFields())
-	return r.getMovie(ctx, movie.ID)
+	// for backwards compatibility - run both movie and group hooks
+	r.hookExecutor.ExecutePostHooks(ctx, group.ID, hook.GroupUpdatePost, input, translator.getFields())
+	r.hookExecutor.ExecutePostHooks(ctx, group.ID, hook.MovieUpdatePost, input, translator.getFields())
+	return r.getGroup(ctx, group.ID)
 }
 
-func (r *mutationResolver) BulkMovieUpdate(ctx context.Context, input BulkMovieUpdateInput) ([]*models.Movie, error) {
-	movieIDs, err := stringslice.StringSliceToIntSlice(input.Ids)
+func (r *mutationResolver) BulkMovieUpdate(ctx context.Context, input BulkMovieUpdateInput) ([]*models.Group, error) {
+	groupIDs, err := stringslice.StringSliceToIntSlice(input.Ids)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("converting ids: %w", err)
 	}
-
-	updatedTime := time.Now()
 
 	translator := changesetTranslator{
 		inputMap: getUpdateInputMap(ctx),
 	}
 
-	updatedMovie := models.MoviePartial{
-		UpdatedAt: &models.SQLiteTimestamp{Timestamp: updatedTime},
+	// Populate group from the input
+	updatedGroup := models.NewGroupPartial()
+
+	updatedGroup.Rating = translator.optionalInt(input.Rating100, "rating100")
+	updatedGroup.Director = translator.optionalString(input.Director, "director")
+
+	updatedGroup.StudioID, err = translator.optionalIntFromString(input.StudioID, "studio_id")
+	if err != nil {
+		return nil, fmt.Errorf("converting studio id: %w", err)
 	}
 
-	updatedMovie.Rating = translator.ratingConversion(input.Rating, input.Rating100)
-	updatedMovie.StudioID = translator.nullInt64FromString(input.StudioID, "studio_id")
-	updatedMovie.Director = translator.nullString(input.Director, "director")
+	updatedGroup.TagIDs, err = translator.updateIdsBulk(input.TagIds, "tag_ids")
+	if err != nil {
+		return nil, fmt.Errorf("converting tag ids: %w", err)
+	}
 
-	ret := []*models.Movie{}
+	updatedGroup.URLs = translator.optionalURLsBulk(input.Urls, nil)
+
+	ret := []*models.Group{}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		qb := r.repository.Movie
+		qb := r.repository.Group
 
-		for _, movieID := range movieIDs {
-			updatedMovie.ID = movieID
-
-			existing, err := qb.Find(ctx, movieID)
+		for _, groupID := range groupIDs {
+			group, err := qb.UpdatePartial(ctx, groupID, updatedGroup)
 			if err != nil {
 				return err
 			}
 
-			if existing == nil {
-				return fmt.Errorf("movie with id %d not found", movieID)
-			}
-
-			movie, err := qb.Update(ctx, updatedMovie)
-			if err != nil {
-				return err
-			}
-
-			ret = append(ret, movie)
+			ret = append(ret, group)
 		}
 
 		return nil
@@ -261,16 +252,18 @@ func (r *mutationResolver) BulkMovieUpdate(ctx context.Context, input BulkMovieU
 		return nil, err
 	}
 
-	var newRet []*models.Movie
-	for _, movie := range ret {
-		r.hookExecutor.ExecutePostHooks(ctx, movie.ID, plugin.MovieUpdatePost, input, translator.getFields())
+	var newRet []*models.Group
+	for _, group := range ret {
+		// for backwards compatibility - run both movie and group hooks
+		r.hookExecutor.ExecutePostHooks(ctx, group.ID, hook.GroupUpdatePost, input, translator.getFields())
+		r.hookExecutor.ExecutePostHooks(ctx, group.ID, hook.MovieUpdatePost, input, translator.getFields())
 
-		movie, err = r.getMovie(ctx, movie.ID)
+		group, err = r.getGroup(ctx, group.ID)
 		if err != nil {
 			return nil, err
 		}
 
-		newRet = append(newRet, movie)
+		newRet = append(newRet, group)
 	}
 
 	return newRet, nil
@@ -279,28 +272,30 @@ func (r *mutationResolver) BulkMovieUpdate(ctx context.Context, input BulkMovieU
 func (r *mutationResolver) MovieDestroy(ctx context.Context, input MovieDestroyInput) (bool, error) {
 	id, err := strconv.Atoi(input.ID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("converting id: %w", err)
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		return r.repository.Movie.Destroy(ctx, id)
+		return r.repository.Group.Destroy(ctx, id)
 	}); err != nil {
 		return false, err
 	}
 
-	r.hookExecutor.ExecutePostHooks(ctx, id, plugin.MovieDestroyPost, input, nil)
+	// for backwards compatibility - run both movie and group hooks
+	r.hookExecutor.ExecutePostHooks(ctx, id, hook.GroupDestroyPost, input, nil)
+	r.hookExecutor.ExecutePostHooks(ctx, id, hook.MovieDestroyPost, input, nil)
 
 	return true, nil
 }
 
-func (r *mutationResolver) MoviesDestroy(ctx context.Context, movieIDs []string) (bool, error) {
-	ids, err := stringslice.StringSliceToIntSlice(movieIDs)
+func (r *mutationResolver) MoviesDestroy(ctx context.Context, groupIDs []string) (bool, error) {
+	ids, err := stringslice.StringSliceToIntSlice(groupIDs)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("converting ids: %w", err)
 	}
 
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
-		qb := r.repository.Movie
+		qb := r.repository.Group
 		for _, id := range ids {
 			if err := qb.Destroy(ctx, id); err != nil {
 				return err
@@ -313,7 +308,9 @@ func (r *mutationResolver) MoviesDestroy(ctx context.Context, movieIDs []string)
 	}
 
 	for _, id := range ids {
-		r.hookExecutor.ExecutePostHooks(ctx, id, plugin.MovieDestroyPost, movieIDs, nil)
+		// for backwards compatibility - run both movie and group hooks
+		r.hookExecutor.ExecutePostHooks(ctx, id, hook.GroupDestroyPost, groupIDs, nil)
+		r.hookExecutor.ExecutePostHooks(ctx, id, hook.MovieDestroyPost, groupIDs, nil)
 	}
 
 	return true, nil

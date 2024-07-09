@@ -16,6 +16,7 @@ type ImageAliasStashIDGetter interface {
 	GetImage(ctx context.Context, performerID int) ([]byte, error)
 	models.AliasLoader
 	models.StashIDLoader
+	models.URLLoader
 }
 
 // ToJSON converts a Performer object into its JSON equivalent.
@@ -23,8 +24,6 @@ func ToJSON(ctx context.Context, reader ImageAliasStashIDGetter, performer *mode
 	newPerformerJSON := jsonschema.Performer{
 		Name:           performer.Name,
 		Disambiguation: performer.Disambiguation,
-		Gender:         performer.Gender.String(),
-		URL:            performer.URL,
 		Ethnicity:      performer.Ethnicity,
 		Country:        performer.Country,
 		EyeColor:       performer.EyeColor,
@@ -33,14 +32,20 @@ func ToJSON(ctx context.Context, reader ImageAliasStashIDGetter, performer *mode
 		CareerLength:   performer.CareerLength,
 		Tattoos:        performer.Tattoos,
 		Piercings:      performer.Piercings,
-		Twitter:        performer.Twitter,
-		Instagram:      performer.Instagram,
 		Favorite:       performer.Favorite,
 		Details:        performer.Details,
 		HairColor:      performer.HairColor,
 		IgnoreAutoTag:  performer.IgnoreAutoTag,
 		CreatedAt:      json.JSONTime{Time: performer.CreatedAt},
 		UpdatedAt:      json.JSONTime{Time: performer.UpdatedAt},
+	}
+
+	if performer.Gender != nil {
+		newPerformerJSON.Gender = performer.Gender.String()
+	}
+
+	if performer.Circumcised != nil {
+		newPerformerJSON.Circumcised = performer.Circumcised.String()
 	}
 
 	if performer.Birthdate != nil {
@@ -61,11 +66,20 @@ func ToJSON(ctx context.Context, reader ImageAliasStashIDGetter, performer *mode
 		newPerformerJSON.Weight = *performer.Weight
 	}
 
+	if performer.PenisLength != nil {
+		newPerformerJSON.PenisLength = *performer.PenisLength
+	}
+
 	if err := performer.LoadAliases(ctx, reader); err != nil {
 		return nil, fmt.Errorf("loading performer aliases: %w", err)
 	}
 
 	newPerformerJSON.Aliases = performer.Aliases.List()
+
+	if err := performer.LoadURLs(ctx, reader); err != nil {
+		return nil, fmt.Errorf("loading performer urls: %w", err)
+	}
+	newPerformerJSON.URLs = performer.URLs.List()
 
 	if err := performer.LoadStashIDs(ctx, reader); err != nil {
 		return nil, fmt.Errorf("loading performer stash ids: %w", err)

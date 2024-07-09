@@ -2,7 +2,7 @@
 
 Scrapers can be contributed to the community by creating a PR in [this repository](https://github.com/stashapp/CommunityScrapers/pulls).
 
-# Scraper configuration file format
+## Scraper configuration file format
 
 ```yaml
 name: <site>
@@ -20,7 +20,7 @@ sceneByFragment:
   <single scraper config>
 sceneByURL:
   <multiple scraper URL configs>
-movieByURL:
+groupByURL:
   <multiple scraper URL configs>
 galleryByFragment:
   <single scraper config>
@@ -42,7 +42,7 @@ The scraping types and their required fields are outlined in the following table
 | Scraper in query dropdown button in Scene Edit page | Valid `sceneByName` and `sceneByQueryFragment` configurations. |
 | Scraper in `Scrape...` dropdown button in Scene Edit page | Valid `sceneByFragment` configuration. |
 | Scrape scene from URL | Valid `sceneByURL` configuration with matching URL. |
-| Scrape movie from URL | Valid `movieByURL` configuration with matching URL. |
+| Scrape group from URL | Valid `groupByURL` configuration with matching URL. **Note:** `movieByURL` is also supported but is deprecated. |
 | Scraper in `Scrape...` dropdown button in Gallery Edit page | Valid `galleryByFragment` configuration. |
 | Scrape gallery from URL | Valid `galleryByURL` configuration with matching URL. |
 
@@ -78,7 +78,7 @@ The script is sent input and expects output based on the scraping type, as detai
 | `sceneByName` | `{"name": "<scene query string>"}` | Array of JSON-encoded scene fragments |
 | `sceneByQueryFragment`, `sceneByFragment` | JSON-encoded scene fragment | JSON-encoded scene fragment |
 | `sceneByURL` | `{"url": "<url>"}` | JSON-encoded scene fragment |
-| `movieByURL` | `{"url": "<url>"}` | JSON-encoded movie fragment |
+| `groupByURL` | `{"url": "<url>"}` | JSON-encoded group fragment |
 | `galleryByFragment` | JSON-encoded gallery fragment | JSON-encoded gallery fragment |
 | `galleryByURL` | `{"url": "<url>"}` | JSON-encoded gallery fragment |
 
@@ -166,7 +166,6 @@ sceneByURL:
 The above configuration requires that `sceneScraper` exists in the `xPathScrapers` configuration.
 
 XPath scraping configurations specify the mapping between object fields and an xpath selector. The xpath scraper scrapes the applicable URL and uses xpath to populate the object fields.
->
 
 ### scrapeJson
 
@@ -202,6 +201,7 @@ xPathScrapers:
 ### scrapeXPath and scrapeJson use with `sceneByFragment` and `sceneByQueryFragment`
 
 For `sceneByFragment` and `sceneByQueryFragment`, the `queryURL` field must also be present. This field is used to build a query URL for scenes. For `sceneByFragment`, the `queryURL` field supports the following placeholder fields:
+
 * `{checksum}` - the MD5 checksum of the scene
 * `{oshash}` - the oshash of the scene
 * `{filename}` - the base filename of the scene
@@ -225,7 +225,7 @@ sceneByFragment:
 
 The above configuration would scrape from the value of `queryURL`, replacing `{filename}` with the base filename of the scene, after it has been manipulated by the regex replacements.
 
-### scrapeXPath and scrapeJson use with `<scene|performer|gallery|movie>ByURL`
+### scrapeXPath and scrapeJson use with `<scene|performer|gallery|group>ByURL`
 
 For `sceneByURL`, `performerByURL`, `galleryByURL` the `queryURL` can also be present if we want to use `queryURLReplace`. The functionality is the same as `sceneByFragment`, the only placeholder field available though is the `url`:
 * `{url}` - the url of the scene/performer/gallery
@@ -271,9 +271,9 @@ Likewise, the top-level `jsonScrapers` field contains json scraping configuratio
 
 Collectively, these configurations are known as mapped scraping configurations. 
 
-A mapped scraping configuration may contain a `common` field, and must contain `performer`, `scene`, `movie` or `gallery` depending on the scraping type it is configured for. 
+A mapped scraping configuration may contain a `common` field, and must contain `performer`, `scene`, `group` or `gallery` depending on the scraping type it is configured for. 
 
-Within the `performer`/`scene`/`movie`/`gallery` field are key/value pairs corresponding to the [golang fields](/help/ScraperDevelopment.md#object-fields) on the performer/scene object. These fields are case-sensitive. 
+Within the `performer`/`scene`/`group`/`gallery` field are key/value pairs corresponding to the [golang fields](/help/ScraperDevelopment.md#object-fields) on the performer/scene object. These fields are case-sensitive. 
 
 The values of these may be either a simple selector value, which tells the system where to get the value of the field from, or a more advanced configuration (see below). For example, for an xpath configuration:
 
@@ -341,6 +341,20 @@ scene:
 ### Post-processing options
 
 Post-processing operations are contained in the `postProcess` key. Post-processing operations are performed in the order they are specified. The following post-processing operations are available:
+* `javascript`: accepts a javascript code block, that must return a string value. The input string is declared in the `value` variable. If an error occurs while compiling or running the script, then the original value is returned.
+Example:
+```yaml
+performer:
+  Name:
+    selector: //div[@class="example element"]
+    postProcess:
+      - javascript: |
+          // capitalise the first letter
+          if (value && value.length) {
+            return value[0].toUpperCase() + value.substring(1)
+          }
+```
+Note that the `otto` javascript engine is missing a few built-in methods and may not be consistent with other modern javascript implementations.
 * `feetToCm`: converts a string containing feet and inches numbers into centimeters. Looks for up to two separate integers and interprets the first as the number of feet, and the second as the number of inches. The numbers can be separated by any non-numeric character including the `.` character. It does not handle decimal numbers. For example `6.3` and `6ft3.3` would both be interpreted as 6 feet, 3 inches before converting into centimeters.
 * `lbToKg`: converts a string containing lbs to kg.
 * `map`: contains a map of input values to output values. Where a value matches one of the input values, it is replaced with the matching output value. If no value is matched, then value is unmodified.
@@ -806,7 +820,7 @@ URL
 Date
 Image
 Studio (see Studio Fields)
-Movies (see Movie Fields)
+Groups (see Group Fields)
 Tags (see Tag fields)
 Performers (list of Performer fields)
 ```
@@ -821,7 +835,7 @@ URL
 Name
 ```
 
-### Movie
+### Group
 ```
 Name
 Aliases

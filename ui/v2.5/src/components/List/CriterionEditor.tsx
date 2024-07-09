@@ -1,6 +1,6 @@
 import cloneDeep from "lodash-es/cloneDeep";
 import React, { useCallback, useMemo } from "react";
-import { Form } from "react-bootstrap";
+import { Button, Form } from "react-bootstrap";
 import { CriterionModifier } from "src/core/generated-graphql";
 import {
   DurationCriterion,
@@ -12,7 +12,6 @@ import {
   DateCriterion,
   TimestampCriterion,
   BooleanCriterion,
-  PathCriterionOption,
 } from "src/models/list-filter/criteria/criterion";
 import { useIntl } from "react-intl";
 import {
@@ -36,8 +35,18 @@ import { StashIDFilter } from "./Filters/StashIDFilter";
 import { RatingCriterion } from "../../models/list-filter/criteria/rating";
 import { RatingFilter } from "./Filters/RatingFilter";
 import { BooleanFilter } from "./Filters/BooleanFilter";
-import { OptionsListFilter } from "./Filters/OptionsListFilter";
+import { OptionFilter, OptionListFilter } from "./Filters/OptionFilter";
 import { PathFilter } from "./Filters/PathFilter";
+import { PerformersCriterion } from "src/models/list-filter/criteria/performers";
+import PerformersFilter from "./Filters/PerformersFilter";
+import { StudiosCriterion } from "src/models/list-filter/criteria/studios";
+import StudiosFilter from "./Filters/StudiosFilter";
+import { TagsCriterion } from "src/models/list-filter/criteria/tags";
+import TagsFilter from "./Filters/TagsFilter";
+import { PhashCriterion } from "src/models/list-filter/criteria/phash";
+import { PhashFilter } from "./Filters/PhashFilter";
+import cx from "classnames";
+import { PathCriterion } from "src/models/list-filter/criteria/path";
 
 interface IGenericCriterionEditor {
   criterion: Criterion<CriterionValue>;
@@ -53,9 +62,9 @@ const GenericCriterionEditor: React.FC<IGenericCriterionEditor> = ({
   const { options, modifierOptions } = criterion.criterionOption;
 
   const onChangedModifierSelect = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
+    (m: CriterionModifier) => {
       const newCriterion = cloneDeep(criterion);
-      newCriterion.modifier = event.target.value as CriterionModifier;
+      newCriterion.modifier = m;
       setCriterion(newCriterion);
     },
     [criterion, setCriterion]
@@ -67,18 +76,19 @@ const GenericCriterionEditor: React.FC<IGenericCriterionEditor> = ({
     }
 
     return (
-      <Form.Control
-        as="select"
-        onChange={onChangedModifierSelect}
-        value={criterion.modifier}
-        className="btn-secondary modifier-selector"
-      >
-        {modifierOptions.map((c) => (
-          <option key={c.value} value={c.value}>
-            {c.label ? intl.formatMessage({ id: c.label }) : ""}
-          </option>
+      <Form.Group className="modifier-options">
+        {modifierOptions.map((m) => (
+          <Button
+            className={cx("modifier-option", {
+              selected: criterion.modifier === m,
+            })}
+            key={m}
+            onClick={() => onChangedModifierSelect(m)}
+          >
+            {Criterion.getModifierLabel(intl, m)}
+          </Button>
         ))}
-      </Form.Control>
+      </Form.Group>
     );
   }, [modifierOptions, onChangedModifierSelect, criterion.modifier, intl]);
 
@@ -104,6 +114,33 @@ const GenericCriterionEditor: React.FC<IGenericCriterionEditor> = ({
       return;
     }
 
+    if (criterion instanceof PerformersCriterion) {
+      return (
+        <PerformersFilter
+          criterion={criterion}
+          setCriterion={(c) => setCriterion(c)}
+        />
+      );
+    }
+
+    if (criterion instanceof StudiosCriterion) {
+      return (
+        <StudiosFilter
+          criterion={criterion}
+          setCriterion={(c) => setCriterion(c)}
+        />
+      );
+    }
+
+    if (criterion instanceof TagsCriterion) {
+      return (
+        <TagsFilter
+          criterion={criterion}
+          setCriterion={(c) => setCriterion(c)}
+        />
+      );
+    }
+
     if (criterion instanceof ILabeledIdCriterion) {
       return (
         <LabeledIdFilter
@@ -126,20 +163,19 @@ const GenericCriterionEditor: React.FC<IGenericCriterionEditor> = ({
       !criterionIsNumberValue(criterion.value) &&
       !criterionIsStashIDValue(criterion.value) &&
       !criterionIsDateValue(criterion.value) &&
-      !criterionIsTimestampValue(criterion.value) &&
-      !Array.isArray(criterion.value)
+      !criterionIsTimestampValue(criterion.value)
     ) {
-      // if (!modifierOptions || modifierOptions.length === 0) {
-      return (
-        <OptionsListFilter criterion={criterion} setCriterion={setCriterion} />
-      );
-      // }
-
-      // return (
-      //   <OptionsFilter criterion={criterion} onValueChanged={onValueChanged} />
-      // );
+      if (!Array.isArray(criterion.value)) {
+        return (
+          <OptionFilter criterion={criterion} setCriterion={setCriterion} />
+        );
+      } else {
+        return (
+          <OptionListFilter criterion={criterion} setCriterion={setCriterion} />
+        );
+      }
     }
-    if (criterion.criterionOption instanceof PathCriterionOption) {
+    if (criterion instanceof PathCriterion) {
       return (
         <PathFilter criterion={criterion} onValueChanged={onValueChanged} />
       );
@@ -170,6 +206,11 @@ const GenericCriterionEditor: React.FC<IGenericCriterionEditor> = ({
     if (criterion instanceof RatingCriterion) {
       return (
         <RatingFilter criterion={criterion} onValueChanged={onValueChanged} />
+      );
+    }
+    if (criterion instanceof PhashCriterion) {
+      return (
+        <PhashFilter criterion={criterion} onValueChanged={onValueChanged} />
       );
     }
     if (

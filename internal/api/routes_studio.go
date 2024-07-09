@@ -6,21 +6,21 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
+
+	"github.com/stashapp/stash/internal/static"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
-	"github.com/stashapp/stash/pkg/studio"
-	"github.com/stashapp/stash/pkg/txn"
 	"github.com/stashapp/stash/pkg/utils"
 )
 
 type StudioFinder interface {
-	studio.Finder
+	models.StudioGetter
 	GetImage(ctx context.Context, studioID int) ([]byte, error)
 }
 
 type studioRoutes struct {
-	txnManager   txn.Manager
+	routes
 	studioFinder StudioFinder
 }
 
@@ -41,7 +41,7 @@ func (rs studioRoutes) Image(w http.ResponseWriter, r *http.Request) {
 
 	var image []byte
 	if defaultParam != "true" {
-		readTxnErr := txn.WithReadTxn(r.Context(), rs.txnManager, func(ctx context.Context) error {
+		readTxnErr := rs.withReadTxn(r, func(ctx context.Context) error {
 			var err error
 			image, err = rs.studioFinder.GetImage(ctx, studio.ID)
 			return err
@@ -54,13 +54,12 @@ func (rs studioRoutes) Image(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// fallback to default image
 	if len(image) == 0 {
-		image, _ = utils.ProcessBase64Image(models.DefaultStudioImage)
+		image = static.ReadAll(static.DefaultStudioImage)
 	}
 
-	if err := utils.ServeImage(image, w, r); err != nil {
-		logger.Warnf("error serving studio image: %v", err)
-	}
+	utils.ServeImage(w, r, image)
 }
 
 func (rs studioRoutes) StudioCtx(next http.Handler) http.Handler {
@@ -72,7 +71,7 @@ func (rs studioRoutes) StudioCtx(next http.Handler) http.Handler {
 		}
 
 		var studio *models.Studio
-		_ = txn.WithReadTxn(r.Context(), rs.txnManager, func(ctx context.Context) error {
+		_ = rs.withReadTxn(r, func(ctx context.Context) error {
 			var err error
 			studio, err = rs.studioFinder.Find(ctx, studioID)
 			return err

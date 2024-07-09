@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/jinzhu/copier"
 	"github.com/shurcooL/graphql"
@@ -69,6 +68,8 @@ type scrapedPerformerStash struct {
 	Height       *string            `graphql:"height" json:"height"`
 	Measurements *string            `graphql:"measurements" json:"measurements"`
 	FakeTits     *string            `graphql:"fake_tits" json:"fake_tits"`
+	PenisLength  *string            `graphql:"penis_length" json:"penis_length"`
+	Circumcised  *string            `graphql:"circumcised" json:"circumcised"`
 	CareerLength *string            `graphql:"career_length" json:"career_length"`
 	Tattoos      *string            `graphql:"tattoos" json:"tattoos"`
 	Piercings    *string            `graphql:"piercings" json:"piercings"`
@@ -307,48 +308,4 @@ func (s *stashScraper) scrapeGalleryByGallery(ctx context.Context, gallery *mode
 
 func (s *stashScraper) scrapeByURL(_ context.Context, _ string, _ ScrapeContentType) (ScrapedContent, error) {
 	return nil, ErrNotSupported
-}
-
-func sceneToUpdateInput(scene *models.Scene) models.SceneUpdateInput {
-	dateToStringPtr := func(s *models.Date) *string {
-		if s != nil {
-			v := s.String()
-			return &v
-		}
-
-		return nil
-	}
-
-	// fallback to file basename if title is empty
-	title := scene.GetTitle()
-
-	return models.SceneUpdateInput{
-		ID:      strconv.Itoa(scene.ID),
-		Title:   &title,
-		Details: &scene.Details,
-		URL:     &scene.URL,
-		Date:    dateToStringPtr(scene.Date),
-	}
-}
-
-func galleryToUpdateInput(gallery *models.Gallery) models.GalleryUpdateInput {
-	dateToStringPtr := func(s *models.Date) *string {
-		if s != nil {
-			v := s.String()
-			return &v
-		}
-
-		return nil
-	}
-
-	// fallback to file basename if title is empty
-	title := gallery.GetTitle()
-
-	return models.GalleryUpdateInput{
-		ID:      strconv.Itoa(gallery.ID),
-		Title:   &title,
-		Details: &gallery.Details,
-		URL:     &gallery.URL,
-		Date:    dateToStringPtr(gallery.Date),
-	}
 }

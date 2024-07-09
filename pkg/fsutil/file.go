@@ -6,36 +6,63 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/stashapp/stash/pkg/logger"
 )
+
+// CopyFile copies the contents of the file at srcpath to a regular file at dstpath.
+// It will copy the last modified timestamp
+// If dstpath already exists the function will fail.
+func CopyFile(srcpath, dstpath string) (err error) {
+	r, err := os.Open(srcpath)
+	if err != nil {
+		return err
+	}
+
+	w, err := os.OpenFile(dstpath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0666)
+	if err != nil {
+		r.Close() // We need to close the input file as the defer below would not be called.
+		return err
+	}
+
+	defer func() {
+		r.Close() // ok to ignore error: file was opened read-only.
+		e := w.Close()
+		// Report the error from w.Close, if any.
+		// But do so only if there isn't already an outgoing error.
+		if e != nil && err == nil {
+			err = e
+		}
+		// Copy modified time
+		if err == nil {
+			// io.Copy succeeded, we should fix the dstpath timestamp
+			srcFileInfo, e := os.Stat(srcpath)
+			if e != nil {
+				err = e
+				return
+			}
+
+			e = os.Chtimes(dstpath, srcFileInfo.ModTime(), srcFileInfo.ModTime())
+			if e != nil {
+				err = e
+			}
+		}
+	}()
+
+	_, err = io.Copy(w, r)
+	return err
+}
 
 // SafeMove attempts to move the file with path src to dest using os.Rename. If this fails, then it copies src to dest, then deletes src.
 func SafeMove(src, dst string) error {
 	err := os.Rename(src, dst)
 
 	if err != nil {
-		in, err := os.Open(src)
-		if err != nil {
-			return err
-		}
-		defer in.Close()
-
-		out, err := os.Create(dst)
-		if err != nil {
-			return err
-		}
-		defer out.Close()
-
-		_, err = io.Copy(out, in)
-		if err != nil {
-			return err
-		}
-
-		err = out.Close()
-		if err != nil {
-			return err
+		copyErr := CopyFile(src, dst)
+		if copyErr != nil {
+			return fmt.Errorf("copying file during SaveMove failed with: '%w'; renaming file failed previously with: '%v'", copyErr, err)
 		}
 
 		err = os.Remove(src)
@@ -136,4 +163,13 @@ func SanitiseBasename(v string) string {
 	v = multiHyphenRE.ReplaceAllString(v, "-")
 
 	return strings.TrimSpace(v)
+}
+
+// GetExeName returns the name of the given executable for the current platform.
+// One windows it returns the name with the .exe extension.
+func GetExeName(base string) string {
+	if runtime.GOOS == "windows" {
+		return base + ".exe"
+	}
+	return base
 }

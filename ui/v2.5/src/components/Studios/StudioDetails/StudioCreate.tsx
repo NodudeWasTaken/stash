@@ -27,15 +27,17 @@ const StudioCreate: React.FC = () => {
   const [createStudio] = useStudioCreate();
 
   async function onSave(input: GQL.StudioCreateInput) {
-    try {
-      const result = await createStudio({
-        variables: { input },
-      });
-      if (result.data?.studioCreate?.id) {
-        history.push(`/studios/${result.data.studioCreate.id}`);
-      }
-    } catch (e) {
-      Toast.error(e);
+    const result = await createStudio({
+      variables: { input },
+    });
+    if (result.data?.studioCreate?.id) {
+      history.push(`/studios/${result.data.studioCreate.id}`);
+      Toast.success(
+        intl.formatMessage(
+          { id: "toast.created_entity" },
+          { entity: intl.formatMessage({ id: "studio" }).toLocaleLowerCase() }
+        )
+      );
     }
   }
 
@@ -56,7 +58,9 @@ const StudioCreate: React.FC = () => {
         </h2>
         <div className="text-center">
           {encodingImage ? (
-            <LoadingIndicator message="Encoding image..." />
+            <LoadingIndicator
+              message={intl.formatMessage({ id: "actions.encoding_image" })}
+            />
           ) : (
             renderImage()
           )}

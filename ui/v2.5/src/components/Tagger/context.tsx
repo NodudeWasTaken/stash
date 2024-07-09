@@ -24,6 +24,8 @@ import { useLocalForage } from "src/hooks/LocalForage";
 import { useToast } from "src/hooks/Toast";
 import { ConfigurationContext } from "src/hooks/Config";
 import { ITaggerSource, SCRAPER_PREFIX, STASH_BOX_PREFIX } from "./constants";
+import { errorToString } from "src/utils";
+import { mergeStudioStashIDs } from "./utils";
 
 export interface ITaggerContextState {
   config: ITaggerConfig;
@@ -39,8 +41,12 @@ export interface ITaggerContextState {
   doSceneFragmentScrape: (sceneID: string) => Promise<void>;
   doMultiSceneFragmentScrape: (sceneIDs: string[]) => Promise<void>;
   stopMultiScrape: () => void;
-  createNewTag: (toCreate: GQL.ScrapedTag) => Promise<string | undefined>;
+  createNewTag: (
+    tag: GQL.ScrapedTag,
+    toCreate: GQL.TagCreateInput
+  ) => Promise<string | undefined>;
   createNewPerformer: (
+    performer: GQL.ScrapedPerformer,
     toCreate: GQL.PerformerCreateInput
   ) => Promise<string | undefined>;
   linkPerformer: (
@@ -48,8 +54,10 @@ export interface ITaggerContextState {
     performerID: string
   ) => Promise<void>;
   createNewStudio: (
+    studio: GQL.ScrapedStudio,
     toCreate: GQL.StudioCreateInput
   ) => Promise<string | undefined>;
+  updateStudio: (studio: GQL.StudioUpdateInput) => Promise<void>;
   linkStudio: (studio: GQL.ScrapedStudio, studioID: string) => Promise<void>;
   resolveScene: (
     sceneID: string,
@@ -86,6 +94,7 @@ export const TaggerStateContext = React.createContext<ITaggerContextState>({
   createNewPerformer: dummyValFn,
   linkPerformer: dummyFn,
   createNewStudio: dummyValFn,
+  updateStudio: dummyFn,
   linkStudio: dummyFn,
   resolveScene: dummyFn,
   submitFingerprints: dummyFn,
@@ -134,13 +143,12 @@ export const TaggerContext: React.FC = ({ children }) => {
     }
 
     const { stashBoxes } = stashConfig.general;
-    const scrapers = Scrapers.data.listSceneScrapers;
+    const scrapers = Scrapers.data.listScrapers;
 
     const stashboxSources: ITaggerSource[] = stashBoxes.map((s, i) => ({
-      id: `${STASH_BOX_PREFIX}${i}`,
-      stashboxEndpoint: s.endpoint,
+      id: `${STASH_BOX_PREFIX}${s.endpoint}`,
       sourceInput: {
-        stash_box_index: i,
+        stash_box_endpoint: s.endpoint,
       },
       displayName: `stash-box: ${s.name || `#${i + 1}`}`,
       supportSceneFragment: true,
@@ -183,14 +191,14 @@ export const TaggerContext: React.FC = ({ children }) => {
   }, [currentSource]);
 
   function getPendingFingerprints() {
-    const endpoint = currentSource?.stashboxEndpoint;
+    const endpoint = currentSource?.sourceInput.stash_box_endpoint;
     if (!config || !endpoint) return [];
 
     return config.fingerprintQueue[endpoint] ?? [];
   }
 
   function clearSubmissionQueue() {
-    const endpoint = currentSource?.stashboxEndpoint;
+    const endpoint = currentSource?.sourceInput.stash_box_endpoint;
     if (!config || !endpoint) return;
 
     setConfig({
@@ -206,18 +214,16 @@ export const TaggerContext: React.FC = ({ children }) => {
     GQL.useSubmitStashBoxFingerprintsMutation();
 
   async function submitFingerprints() {
-    const endpoint = currentSource?.stashboxEndpoint;
-    const stashBoxIndex =
-      currentSource?.sourceInput.stash_box_index ?? undefined;
+    const endpoint = currentSource?.sourceInput.stash_box_endpoint;
 
-    if (!config || !endpoint || stashBoxIndex === undefined) return;
+    if (!config || !endpoint) return;
 
     try {
       setLoading(true);
       await submitFingerprintsMutation({
         variables: {
           input: {
-            stash_box_index: stashBoxIndex,
+            stash_box_endpoint: endpoint,
             scene_ids: config.fingerprintQueue[endpoint],
           },
         },
@@ -232,7 +238,7 @@ export const TaggerContext: React.FC = ({ children }) => {
   }
 
   function queueFingerprintSubmission(sceneId: string) {
-    const endpoint = currentSource?.stashboxEndpoint;
+    const endpoint = currentSource?.sourceInput.stash_box_endpoint;
     if (!config || !endpoint) return;
 
     setConfig({
@@ -244,6 +250,14 @@ export const TaggerContext: React.FC = ({ children }) => {
     });
   }
 
+  function clearSearchResults(sceneID: string) {
+    setSearchResults((current) => {
+      const newSearchResults = { ...current };
+      delete newSearchResults[sceneID];
+      return newSearchResults;
+    });
+  }
+
   async function doSceneQuery(sceneID: string, searchVal: string) {
     if (!currentSource) {
       return;
@@ -251,6 +265,7 @@ export const TaggerContext: React.FC = ({ children }) => {
 
     try {
       setLoading(true);
+      clearSearchResults(sceneID);
 
       const results = await queryScrapeSceneQuery(
         currentSource.sourceInput,
@@ -258,7 +273,8 @@ export const TaggerContext: React.FC = ({ children }) => {
       );
       let newResult: ISceneQueryResult;
       // scenes are already resolved if they come from stash-box
-      const resolved = currentSource.sourceInput.stash_box_index !== undefined;
+      const resolved =
+        currentSource.sourceInput.stash_box_endpoint !== undefined;
 
       if (results.error) {
         newResult = { error: results.error.message };
@@ -286,21 +302,31 @@ export const TaggerContext: React.FC = ({ children }) => {
       return;
     }
 
-    const results = await queryScrapeScene(currentSource.sourceInput, sceneID);
+    clearSearchResults(sceneID);
+
     let newResult: ISceneQueryResult;
 
-    if (results.error) {
-      newResult = { error: results.error.message };
-    } else if (results.errors) {
-      newResult = { error: results.errors.toString() };
-    } else {
-      newResult = {
-        results: results.data.scrapeSingleScene.map((r) => ({
-          ...r,
-          // scenes are already resolved if they are scraped via fragment
-          resolved: true,
-        })),
-      };
+    try {
+      const results = await queryScrapeScene(
+        currentSource.sourceInput,
+        sceneID
+      );
+
+      if (results.error) {
+        newResult = { error: results.error.message };
+      } else if (results.errors) {
+        newResult = { error: results.errors.toString() };
+      } else {
+        newResult = {
+          results: results.data.scrapeSingleScene.map((r) => ({
+            ...r,
+            // scenes are already resolved if they are scraped via fragment
+            resolved: true,
+          })),
+        };
+      }
+    } catch (err: unknown) {
+      newResult = { error: errorToString(err) };
     }
 
     setSearchResults((current) => {
@@ -313,11 +339,7 @@ export const TaggerContext: React.FC = ({ children }) => {
       return;
     }
 
-    setSearchResults((current) => {
-      const newResults = { ...current };
-      delete newResults[sceneID];
-      return newResults;
-    });
+    clearSearchResults(sceneID);
 
     try {
       setLoading(true);
@@ -341,13 +363,16 @@ export const TaggerContext: React.FC = ({ children }) => {
       setLoading(true);
       setMultiError(undefined);
 
-      const stashBoxIndex =
-        currentSource.sourceInput.stash_box_index ?? undefined;
+      const stashBoxEndpoint =
+        currentSource.sourceInput.stash_box_endpoint ?? undefined;
 
       // if current source is stash-box, we can use the multi-scene
       // interface
-      if (stashBoxIndex !== undefined) {
-        const results = await stashBoxSceneBatchQuery(sceneIDs, stashBoxIndex);
+      if (stashBoxEndpoint !== undefined) {
+        const results = await stashBoxSceneBatchQuery(
+          sceneIDs,
+          stashBoxEndpoint
+        );
 
         if (results.error) {
           setMultiError(results.error.message);
@@ -408,7 +433,7 @@ export const TaggerContext: React.FC = ({ children }) => {
         details: scene.details,
         remote_site_id: scene.remote_site_id,
         title: scene.title,
-        url: scene.url,
+        urls: scene.urls,
       };
 
       const result = await queryScrapeSceneQueryFragment(
@@ -439,14 +464,6 @@ export const TaggerContext: React.FC = ({ children }) => {
     }
   }
 
-  function clearSearchResults(sceneID: string) {
-    setSearchResults((current) => {
-      const newSearchResults = { ...current };
-      delete newSearchResults[sceneID];
-      return newSearchResults;
-    });
-  }
-
   async function saveScene(
     sceneCreateInput: GQL.SceneUpdateInput,
     queueFingerprint: boolean
@@ -454,7 +471,11 @@ export const TaggerContext: React.FC = ({ children }) => {
     try {
       await updateScene({
         variables: {
-          input: sceneCreateInput,
+          input: {
+            ...sceneCreateInput,
+            // only set organized if it is enabled in the config
+            organized: config?.markSceneAsOrganizedOnSave || undefined,
+          },
         },
       });
 
@@ -484,16 +505,19 @@ export const TaggerContext: React.FC = ({ children }) => {
     return newSearchResults;
   }
 
-  async function createNewTag(toCreate: GQL.ScrapedTag) {
-    const tagInput: GQL.TagCreateInput = { name: toCreate.name ?? "" };
+  async function createNewTag(
+    tag: GQL.ScrapedTag,
+    toCreate: GQL.TagCreateInput
+  ) {
     try {
       const result = await createTag({
         variables: {
-          input: tagInput,
+          input: toCreate,
         },
       });
 
       const tagID = result.data?.tagCreate?.id;
+      if (tagID === undefined) return undefined;
 
       const newSearchResults = mapResults((r) => {
         if (!r.tags) {
@@ -503,7 +527,7 @@ export const TaggerContext: React.FC = ({ children }) => {
         return {
           ...r,
           tags: r.tags.map((t) => {
-            if (t.name === toCreate.name) {
+            if (t.name === tag.name) {
               return {
                 ...t,
                 stored_id: tagID,
@@ -517,13 +541,11 @@ export const TaggerContext: React.FC = ({ children }) => {
 
       setSearchResults(newSearchResults);
 
-      Toast.success({
-        content: (
-          <span>
-            Created tag: <b>{toCreate.name}</b>
-          </span>
-        ),
-      });
+      Toast.success(
+        <span>
+          Created tag: <b>{toCreate.name}</b>
+        </span>
+      );
 
       return tagID;
     } catch (e) {
@@ -531,7 +553,10 @@ export const TaggerContext: React.FC = ({ children }) => {
     }
   }
 
-  async function createNewPerformer(toCreate: GQL.PerformerCreateInput) {
+  async function createNewPerformer(
+    performer: GQL.ScrapedPerformer,
+    toCreate: GQL.PerformerCreateInput
+  ) {
     try {
       const result = await createPerformer({
         variables: {
@@ -540,6 +565,7 @@ export const TaggerContext: React.FC = ({ children }) => {
       });
 
       const performerID = result.data?.performerCreate?.id;
+      if (performerID === undefined) return undefined;
 
       const newSearchResults = mapResults((r) => {
         if (!r.performers) {
@@ -548,28 +574,26 @@ export const TaggerContext: React.FC = ({ children }) => {
 
         return {
           ...r,
-          performers: r.performers.map((t) => {
-            if (t.name === toCreate.name) {
+          performers: r.performers.map((p) => {
+            if (p.name === performer.name) {
               return {
-                ...t,
+                ...p,
                 stored_id: performerID,
               };
             }
 
-            return t;
+            return p;
           }),
         };
       });
 
       setSearchResults(newSearchResults);
 
-      Toast.success({
-        content: (
-          <span>
-            Created performer: <b>{toCreate.name}</b>
-          </span>
-        ),
-      });
+      Toast.success(
+        <span>
+          Created performer: <b>{toCreate.name}</b>
+        </span>
+      );
 
       return performerID;
     } catch (e) {
@@ -581,7 +605,11 @@ export const TaggerContext: React.FC = ({ children }) => {
     performer: GQL.ScrapedPerformer,
     performerID: string
   ) {
-    if (!performer.remote_site_id || !currentSource?.stashboxEndpoint) return;
+    if (
+      !performer.remote_site_id ||
+      !currentSource?.sourceInput.stash_box_endpoint
+    )
+      return;
 
     try {
       const queryResult = await queryFindPerformer(performerID);
@@ -597,7 +625,7 @@ export const TaggerContext: React.FC = ({ children }) => {
 
         stashIDs.push({
           stash_id: performer.remote_site_id,
-          endpoint: currentSource?.stashboxEndpoint,
+          endpoint: currentSource?.sourceInput.stash_box_endpoint,
         });
 
         await updatePerformer({
@@ -631,16 +659,17 @@ export const TaggerContext: React.FC = ({ children }) => {
 
         setSearchResults(newSearchResults);
 
-        Toast.success({
-          content: <span>Added stash-id to performer</span>,
-        });
+        Toast.success(<span>Added stash-id to performer</span>);
       }
     } catch (e) {
       Toast.error(e);
     }
   }
 
-  async function createNewStudio(toCreate: GQL.StudioCreateInput) {
+  async function createNewStudio(
+    studio: GQL.ScrapedStudio,
+    toCreate: GQL.StudioCreateInput
+  ) {
     try {
       const result = await createStudio({
         variables: {
@@ -649,6 +678,7 @@ export const TaggerContext: React.FC = ({ children }) => {
       });
 
       const studioID = result.data?.studioCreate?.id;
+      if (studioID === undefined) return undefined;
 
       const newSearchResults = mapResults((r) => {
         if (!r.studio) {
@@ -658,7 +688,7 @@ export const TaggerContext: React.FC = ({ children }) => {
         return {
           ...r,
           studio:
-            r.studio.name === toCreate.name
+            r.studio.name === studio.name
               ? {
                   ...r.studio,
                   stored_id: studioID,
@@ -669,13 +699,11 @@ export const TaggerContext: React.FC = ({ children }) => {
 
       setSearchResults(newSearchResults);
 
-      Toast.success({
-        content: (
-          <span>
-            Created studio: <b>{toCreate.name}</b>
-          </span>
-        ),
-      });
+      Toast.success(
+        <span>
+          Created studio: <b>{toCreate.name}</b>
+        </span>
+      );
 
       return studioID;
     } catch (e) {
@@ -683,8 +711,62 @@ export const TaggerContext: React.FC = ({ children }) => {
     }
   }
 
+  async function updateExistingStudio(input: GQL.StudioUpdateInput) {
+    try {
+      const inputCopy = { ...input };
+      inputCopy.stash_ids = await mergeStudioStashIDs(
+        input.id,
+        input.stash_ids ?? []
+      );
+      const result = await updateStudio({
+        variables: {
+          input: input,
+        },
+      });
+
+      const studioID = result.data?.studioUpdate?.id;
+
+      const stashID = input.stash_ids?.find((e) => {
+        return e.endpoint === currentSource?.sourceInput.stash_box_endpoint;
+      })?.stash_id;
+
+      if (stashID) {
+        const newSearchResults = mapResults((r) => {
+          if (!r.studio) {
+            return r;
+          }
+
+          return {
+            ...r,
+            studio:
+              r.remote_site_id === stashID
+                ? {
+                    ...r.studio,
+                    stored_id: studioID,
+                  }
+                : r.studio,
+          };
+        });
+
+        setSearchResults(newSearchResults);
+      }
+
+      Toast.success(
+        <span>
+          Created studio: <b>{input.name}</b>
+        </span>
+      );
+    } catch (e) {
+      Toast.error(e);
+    }
+  }
+
   async function linkStudio(studio: GQL.ScrapedStudio, studioID: string) {
-    if (!studio.remote_site_id || !currentSource?.stashboxEndpoint) return;
+    if (
+      !studio.remote_site_id ||
+      !currentSource?.sourceInput.stash_box_endpoint
+    )
+      return;
 
     try {
       const queryResult = await queryFindStudio(studioID);
@@ -700,7 +782,7 @@ export const TaggerContext: React.FC = ({ children }) => {
 
         stashIDs.push({
           stash_id: studio.remote_site_id,
-          endpoint: currentSource?.stashboxEndpoint,
+          endpoint: currentSource?.sourceInput.stash_box_endpoint,
         });
 
         await updateStudio({
@@ -720,7 +802,7 @@ export const TaggerContext: React.FC = ({ children }) => {
           return {
             ...r,
             studio:
-              r.remote_site_id === studio.remote_site_id
+              r.studio.remote_site_id === studio.remote_site_id
                 ? {
                     ...r.studio,
                     stored_id: studioID,
@@ -731,9 +813,7 @@ export const TaggerContext: React.FC = ({ children }) => {
 
         setSearchResults(newSearchResults);
 
-        Toast.success({
-          content: <span>Added stash-id to studio</span>,
-        });
+        Toast.success(<span>Added stash-id to studio</span>);
       }
     } catch (e) {
       Toast.error(e);
@@ -762,6 +842,7 @@ export const TaggerContext: React.FC = ({ children }) => {
         createNewPerformer,
         linkPerformer,
         createNewStudio,
+        updateStudio: updateExistingStudio,
         linkStudio,
         resolveScene,
         saveScene,

@@ -9,8 +9,9 @@ const (
 	performerKey key = iota + 1
 	sceneKey
 	studioKey
-	movieKey
+	groupKey
 	tagKey
 	downloadKey
 	imageKey
+	pluginKey
 )

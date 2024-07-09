@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sys/cpu"
 
+	"github.com/stashapp/stash/internal/build"
 	"github.com/stashapp/stash/pkg/logger"
 )
 
@@ -25,8 +26,8 @@ const defaultSHLength int = 8 // default length of SHA short hash returned by <g
 
 var stashReleases = func() map[string]string {
 	return map[string]string{
-		"darwin/amd64":  "stash-osx",
-		"darwin/arm64":  "stash-osx-applesilicon",
+		"darwin/amd64":  "stash-macos",
+		"darwin/arm64":  "stash-macos",
 		"linux/amd64":   "stash-linux",
 		"windows/amd64": "stash-win.exe",
 		"linux/arm":     "stash-linux-arm32v6",
@@ -113,7 +114,6 @@ type LatestRelease struct {
 }
 
 func makeGithubRequest(ctx context.Context, url string, output interface{}) error {
-
 	transport := &http.Transport{Proxy: http.ProxyFromEnvironment}
 
 	client := &http.Client{
@@ -124,6 +124,7 @@ func makeGithubRequest(ctx context.Context, url string, output interface{}) erro
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 
 	req.Header.Add("Accept", apiAcceptHeader) // gh api recommendation , send header with api version
+	logger.Debugf("Github API request: %s", url)
 	response, err := client.Do(req)
 
 	if err != nil {
@@ -170,7 +171,7 @@ func GetLatestRelease(ctx context.Context) (*LatestRelease, error) {
 	wantedRelease := stashReleases()[platform]
 
 	url := apiReleases
-	if IsDevelop() {
+	if build.IsDevelop() {
 		// get the release tagged with the development tag
 		url += "/tags/" + developmentTag
 	} else {
@@ -213,7 +214,7 @@ func GetLatestRelease(ctx context.Context) (*LatestRelease, error) {
 		}
 	}
 
-	_, githash, _ := GetVersion()
+	_, githash, _ := build.Version()
 	shLength := len(githash)
 	if shLength == 0 {
 		shLength = defaultSHLength
@@ -229,19 +230,39 @@ func GetLatestRelease(ctx context.Context) (*LatestRelease, error) {
 }
 
 func getReleaseHash(ctx context.Context, tagName string) (string, error) {
-	url := apiTags
-	tags := []githubTagResponse{}
-	err := makeGithubRequest(ctx, url, &tags)
-	if err != nil {
-		return "", err
+	// Start with a small page size if not searching for latest_develop
+	perPage := 10
+	if tagName == developmentTag {
+		perPage = 100
 	}
 
-	for _, tag := range tags {
-		if tag.Name == tagName {
-			if len(tag.Commit.Sha) != 40 {
-				return "", errors.New("invalid Github API response")
+	// Limit to 5 pages, ie 500 tags - should be plenty
+	for page := 1; page <= 5; {
+		url := fmt.Sprintf("%s?per_page=%d&page=%d", apiTags, perPage, page)
+		tags := []githubTagResponse{}
+		err := makeGithubRequest(ctx, url, &tags)
+		if err != nil {
+			return "", err
+		}
+
+		for _, tag := range tags {
+			if tag.Name == tagName {
+				if len(tag.Commit.Sha) != 40 {
+					return "", errors.New("invalid Github API response")
+				}
+				return tag.Commit.Sha, nil
 			}
-			return tag.Commit.Sha, nil
+		}
+
+		if len(tags) == 0 {
+			break
+		}
+
+		// if not found in the first 10, search again on page 1 with the first 100
+		if perPage == 10 {
+			perPage = 100
+		} else {
+			page++
 		}
 	}
 
@@ -253,7 +274,7 @@ func printLatestVersion(ctx context.Context) {
 	if err != nil {
 		logger.Errorf("Couldn't retrieve latest version: %v", err)
 	} else {
-		_, githash, _ = GetVersion()
+		_, githash, _ := build.Version()
 		switch {
 		case githash == "":
 			logger.Infof("Latest version: %s (%s)", latestRelease.Version, latestRelease.ShortHash)

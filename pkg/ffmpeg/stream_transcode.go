@@ -8,7 +8,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/stashapp/stash/pkg/file"
 	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 	"github.com/stashapp/stash/pkg/models"
@@ -61,7 +60,7 @@ func CodecInit(codec VideoCodec) (args Args) {
 		)
 	case VideoCodecM264:
 		args = append(args,
-			"-prio_speed", "1",
+			"-realtime", "1",
 		)
 	case VideoCodecO264:
 		args = append(args,
@@ -134,19 +133,35 @@ var (
 
 type TranscodeOptions struct {
 	StreamType StreamFormat
-	VideoFile  *file.VideoFile
+	VideoFile  *models.VideoFile
 	Resolution string
 	StartTime  float64
 }
 
-func FileGetCodec(sm *StreamManager, mimetype string) (codec VideoCodec) {
-	switch mimetype {
+func (o TranscodeOptions) FileGetCodec(sm *StreamManager, maxTranscodeSize int) (codec VideoCodec) {
+	needsResize := false
+
+	if maxTranscodeSize != 0 {
+		if o.VideoFile.Width > o.VideoFile.Height {
+			needsResize = o.VideoFile.Width > maxTranscodeSize
+		} else {
+			needsResize = o.VideoFile.Height > maxTranscodeSize
+		}
+	}
+
+	switch o.StreamType.MimeType {
 	case MimeMp4Video:
+		if !needsResize && o.VideoFile.VideoCodec == H264 {
+			return VideoCodecCopy
+		}
 		codec = VideoCodecLibX264
 		if hwcodec := sm.encoder.hwCodecMP4Compatible(); hwcodec != nil && sm.config.GetTranscodeHardwareAcceleration() {
 			codec = *hwcodec
 		}
 	case MimeWebmVideo:
+		if !needsResize && (o.VideoFile.VideoCodec == Vp8 || o.VideoFile.VideoCodec == Vp9) {
+			return VideoCodecCopy
+		}
 		codec = VideoCodecVP9
 		if hwcodec := sm.encoder.hwCodecWEBMCompatible(); hwcodec != nil && sm.config.GetTranscodeHardwareAcceleration() {
 			codec = *hwcodec
@@ -169,9 +184,10 @@ func (o TranscodeOptions) makeStreamArgs(sm *StreamManager) Args {
 	args := Args{"-hide_banner"}
 	args = args.LogLevel(LogLevelError)
 
-	codec := FileGetCodec(sm, o.StreamType.MimeType)
+	codec := o.FileGetCodec(sm, maxTranscodeSize)
 
-	args = sm.encoder.hwDeviceInit(args, codec)
+	fullhw := sm.config.GetTranscodeHardwareAcceleration() && sm.encoder.hwCanFullHWTranscode(sm.context, codec, o.VideoFile, maxTranscodeSize)
+	args = sm.encoder.hwDeviceInit(args, codec, fullhw)
 	args = append(args, extraInputArgs...)
 
 	if o.StartTime != 0 {
@@ -182,7 +198,7 @@ func (o TranscodeOptions) makeStreamArgs(sm *StreamManager) Args {
 
 	videoOnly := ProbeAudioCodec(o.VideoFile.AudioCodec) == MissingUnsupported
 
-	videoFilter := sm.encoder.hwMaxResFilter(codec, o.VideoFile.Width, o.VideoFile.Height, maxTranscodeSize)
+	videoFilter := sm.encoder.hwMaxResFilter(codec, o.VideoFile, maxTranscodeSize, fullhw)
 
 	args = append(args, o.StreamType.Args(codec, videoFilter, videoOnly)...)
 
@@ -260,13 +276,14 @@ func (sm *StreamManager) getTranscodeStream(ctx *fsutil.LockContext, options Tra
 
 	mimeType := options.StreamType.MimeType
 	handler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
 		w.Header().Set("Content-Type", mimeType)
 		w.WriteHeader(http.StatusOK)
 
 		// process killing should be handled by command context
 
 		_, err := io.Copy(w, stdout)
-		if err != nil && !errors.Is(err, syscall.EPIPE) {
+		if err != nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
 			logger.Errorf("[transcode] error serving transcoded video file: %v", err)
 		}
 

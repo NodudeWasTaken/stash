@@ -19,11 +19,9 @@ import {
 } from "src/models/list-filter/criteria/criterion";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
-import { useInterfaceLocalForage } from "src/hooks/LocalForage";
 import { useHistory, useLocation } from "react-router-dom";
 import { ConfigurationContext } from "src/hooks/Config";
 import { getFilterOptions } from "src/models/list-filter/factory";
-import { useFindDefaultFilter } from "src/core/StashService";
 import { Pagination, PaginationIndex } from "./Pagination";
 import { EditFilterDialog } from "src/components/List/EditFilterDialog";
 import { ListFilter } from "./ListFilter";
@@ -33,15 +31,8 @@ import { ListOperationButtons } from "./ListOperationButtons";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { DisplayMode } from "src/models/list-filter/types";
 import { ButtonToolbar } from "react-bootstrap";
-
-export enum PersistanceLevel {
-  // do not load default query or persist display mode
-  NONE,
-  // load default query, don't load or persist display mode
-  ALL,
-  // load and persist display mode only
-  VIEW,
-}
+import { View } from "./views";
+import { useDefaultFilter } from "./util";
 
 interface IDataItem {
   id: string;
@@ -79,8 +70,7 @@ interface IRenderListProps {
 }
 
 interface IItemListProps<T extends QueryResult, E extends IDataItem> {
-  persistState?: PersistanceLevel;
-  persistanceKey?: string;
+  view?: View;
   defaultSort?: string;
   filterHook?: (filter: ListFilterModel) => ListFilterModel;
   filterDialog?: (
@@ -137,9 +127,10 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
 
   const RenderList: React.FC<IItemListProps<T, E> & IRenderListProps> = ({
     filter,
+    filterHook,
     onChangePage: _onChangePage,
     updateFilter,
-    persistState,
+    view,
     zoomable,
     selectable,
     otherOperations,
@@ -153,12 +144,17 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [lastClickedId, setLastClickedId] = useState<string>();
 
-    const [editingCriterion, setEditingCriterion] = useState<
-      string | undefined
-    >();
+    const [editingCriterion, setEditingCriterion] = useState<string>();
     const [showEditFilter, setShowEditFilter] = useState(false);
 
-    const result = useResult(filter);
+    const effectiveFilter = useMemo(() => {
+      if (filterHook) {
+        return filterHook(cloneDeep(filter));
+      }
+      return filter;
+    }, [filter, filterHook]);
+
+    const result = useResult(effectiveFilter);
     const [totalCount, setTotalCount] = useState(0);
     const [metadataByline, setMetadataByline] = useState<React.ReactNode>();
     const items = useMemo(() => getItems(result), [result]);
@@ -193,7 +189,13 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
 
     // set up hotkeys
     useEffect(() => {
-      Mousetrap.bind("f", () => setShowEditFilter(true));
+      Mousetrap.bind("f", (e) => {
+        setShowEditFilter(true);
+        // prevent default behavior of typing f in a text field
+        // otherwise the filter dialog closes, the query field is focused and
+        // f is typed.
+        e.preventDefault();
+      });
 
       return () => {
         Mousetrap.unbind("f");
@@ -235,12 +237,12 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
     }, [filter, onChangePage, totalCount]);
     useEffect(() => {
       if (addKeybinds) {
-        const unbindExtras = addKeybinds(result, filter, selectedIds);
+        const unbindExtras = addKeybinds(result, effectiveFilter, selectedIds);
         return () => {
           unbindExtras();
         };
       }
-    }, [addKeybinds, result, filter, selectedIds]);
+    }, [addKeybinds, result, effectiveFilter, selectedIds]);
 
     function singleSelect(id: string, selected: boolean) {
       setLastClickedId(id);
@@ -322,7 +324,7 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
     }
 
     async function onOperationClicked(o: IItemListOperation<T>) {
-      await o.onClick(result, filter, selectedIds);
+      await o.onClick(result, effectiveFilter, selectedIds);
       if (o.postRefetch) {
         result.refetch();
       }
@@ -335,7 +337,7 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
       },
       isDisplayed: () => {
         if (o.isDisplayed) {
-          return o.isDisplayed(result, filter, selectedIds);
+          return o.isDisplayed(result, effectiveFilter, selectedIds);
         }
 
         return true;
@@ -410,7 +412,8 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
         <>
           {renderContent(
             result,
-            filter,
+            // #4780 - use effectiveFilter to ensure filterHook is applied
+            effectiveFilter,
             selectedIds,
             onSelectChange,
             onChangePage,
@@ -460,14 +463,14 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
     }
 
     return (
-      <div>
+      <div className="item-list-container">
         <ButtonToolbar className="justify-content-center">
           <ListFilter
             onFilterUpdate={updateFilter}
             filter={filter}
             filterOptions={filterOptions}
             openFilterDialog={() => setShowEditFilter(true)}
-            persistState={persistState}
+            view={view}
           />
           <ListOperationButtons
             onSelectAll={selectable ? onSelectAll : undefined}
@@ -518,17 +521,14 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
 
   const ItemList: React.FC<IItemListProps<T, E>> = (props) => {
     const {
-      persistState,
-      persistanceKey = filterMode,
+      view,
       defaultSort = filterOptions.defaultSortBy,
-      filterHook,
       defaultZoomIndex,
       alterQuery = true,
     } = props;
 
     const history = useHistory();
     const location = useLocation();
-    const [interfaceState, setInterfaceState] = useInterfaceLocalForage();
     const [filterInitialised, setFilterInitialised] = useState(false);
     const { configuration: config } = useContext(ConfigurationContext);
 
@@ -538,34 +538,10 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
       () => new ListFilterModel(filterMode)
     );
 
-    const updateSavedFilter = useCallback(
-      (updatedFilter: ListFilterModel) => {
-        setInterfaceState((prevState) => {
-          if (!prevState.queryConfig) {
-            prevState.queryConfig = {};
-          }
-
-          const oldFilter = prevState.queryConfig[persistanceKey]?.filter ?? "";
-          const newFilter = new URLSearchParams(oldFilter);
-          newFilter.set("disp", String(updatedFilter.displayMode));
-
-          return {
-            ...prevState,
-            queryConfig: {
-              ...prevState.queryConfig,
-              [persistanceKey]: {
-                ...prevState.queryConfig[persistanceKey],
-                filter: newFilter.toString(),
-              },
-            },
-          };
-        });
-      },
-      [persistanceKey, setInterfaceState]
+    const { defaultFilter, loading: defaultFilterLoading } = useDefaultFilter(
+      filterMode,
+      view
     );
-
-    const { data: defaultFilter, loading: defaultFilterLoading } =
-      useFindDefaultFilter(filterMode);
 
     const updateQueryParams = useCallback(
       (newFilter: ListFilterModel) => {
@@ -581,11 +557,8 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
       (newFilter: ListFilterModel) => {
         setFilter(newFilter);
         updateQueryParams(newFilter);
-        if (persistState === PersistanceLevel.VIEW) {
-          updateSavedFilter(newFilter);
-        }
       },
-      [persistState, updateSavedFilter, updateQueryParams]
+      [updateQueryParams]
     );
 
     // 'Startup' hook, initialises the filters
@@ -593,53 +566,28 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
       // Only run once
       if (filterInitialised) return;
 
-      let newFilter = new ListFilterModel(
-        filterMode,
-        config,
-        defaultSort,
-        defaultDisplayMode,
-        defaultZoomIndex
-      );
+      let newFilter = new ListFilterModel(filterMode, config, defaultZoomIndex);
       let loadDefault = true;
       if (alterQuery && location.search) {
         loadDefault = false;
         newFilter.configureFromQueryString(location.search);
       }
 
-      if (persistState === PersistanceLevel.ALL) {
+      if (view) {
         // only set default filter if uninitialised
         if (loadDefault) {
           // wait until default filter is loaded
           if (defaultFilterLoading) return;
 
-          if (defaultFilter?.findDefaultFilter) {
-            newFilter.currentPage = 1;
-            try {
-              newFilter.configureFromJSON(
-                defaultFilter.findDefaultFilter.filter
-              );
-            } catch (err) {
-              console.log(err);
-              // ignore
-            }
+          if (defaultFilter) {
+            newFilter = defaultFilter.clone();
+
             // #1507 - reset random seed when loaded
             newFilter.randomSeed = -1;
           }
         }
-      } else if (persistState === PersistanceLevel.VIEW) {
-        // wait until forage is initialised
-        if (interfaceState.loading) return;
-
-        const storedQuery = interfaceState.data?.queryConfig?.[persistanceKey];
-        if (persistState === PersistanceLevel.VIEW && storedQuery) {
-          const displayMode = new URLSearchParams(storedQuery.filter).get(
-            "disp"
-          );
-          if (displayMode) {
-            newFilter.displayMode = Number.parseInt(displayMode, 10);
-          }
-        }
       }
+
       setFilter(newFilter);
       updateQueryParams(newFilter);
 
@@ -652,12 +600,10 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
       defaultDisplayMode,
       defaultZoomIndex,
       alterQuery,
-      persistState,
+      view,
       updateQueryParams,
       defaultFilter,
       defaultFilterLoading,
-      interfaceState,
-      persistanceKey,
     ]);
 
     // This hook runs on every page location change (ie navigation),
@@ -695,22 +641,24 @@ export function makeItemList<T extends QueryResult, E extends IDataItem>({
         const newFilter = cloneDeep(filter);
         newFilter.currentPage = page;
         updateFilter(newFilter);
-        window.scrollTo(0, 0);
+
+        // if the current page has a detail-header, then
+        // scroll up relative to that rather than 0, 0
+        const detailHeader = document.querySelector(".detail-header");
+        if (detailHeader) {
+          window.scrollTo(0, detailHeader.scrollHeight - 50);
+        } else {
+          window.scrollTo(0, 0);
+        }
       },
       [filter, updateFilter]
     );
 
-    const renderFilter = useMemo(() => {
-      if (filterInitialised) {
-        return filterHook ? filterHook(cloneDeep(filter)) : filter;
-      }
-    }, [filterInitialised, filter, filterHook]);
-
-    if (!renderFilter) return null;
+    if (!filterInitialised) return null;
 
     return (
       <RenderList
-        filter={renderFilter}
+        filter={filter}
         onChangePage={onChangePage}
         updateFilter={updateFilter}
         {...props}

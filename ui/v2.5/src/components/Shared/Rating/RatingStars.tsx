@@ -13,8 +13,8 @@ import {
 import { useIntl } from "react-intl";
 
 export interface IRatingStarsProps {
-  value?: number;
-  onSetRating?: (value?: number) => void;
+  value: number | null;
+  onSetRating?: (value: number | null) => void;
   disabled?: boolean;
   precision: RatingStarPrecision;
   valueRequired?: boolean;
@@ -87,7 +87,7 @@ export const RatingStars: React.FC<IRatingStarsProps> = (
     setHoverRating(undefined);
 
     if (!newRating) {
-      props.onSetRating(undefined);
+      props.onSetRating(null);
       return;
     }
 
@@ -240,8 +240,10 @@ export const RatingStars: React.FC<IRatingStarsProps> = (
     );
   };
 
+  const precisionClassName = `rating-stars-precision-${props.precision}`;
+
   return (
-    <div className="rating-stars">
+    <div className={`rating-stars ${precisionClassName}`}>
       {Array.from(Array(max)).map((value, index) =>
         renderRatingButton(index + 1)
       )}

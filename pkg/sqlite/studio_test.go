@@ -5,7 +5,6 @@ package sqlite_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -29,7 +28,7 @@ func TestStudioFindByName(t *testing.T) {
 			t.Errorf("Error finding studios: %s", err.Error())
 		}
 
-		assert.Equal(t, studioNames[studioIdxWithScene], studio.Name.String)
+		assert.Equal(t, studioNames[studioIdxWithScene], studio.Name)
 
 		name = studioNames[studioIdxWithDupName] // find a studio by name nocase
 
@@ -40,9 +39,9 @@ func TestStudioFindByName(t *testing.T) {
 		}
 		// studioIdxWithDupName and studioIdxWithScene should have similar names ( only diff should be Name vs NaMe)
 		//studio.Name should match with studioIdxWithScene since its ID is before studioIdxWithDupName
-		assert.Equal(t, studioNames[studioIdxWithScene], studio.Name.String)
+		assert.Equal(t, studioNames[studioIdxWithScene], studio.Name)
 		//studio.Name should match with studioIdxWithDupName if the check is not case sensitive
-		assert.Equal(t, strings.ToLower(studioNames[studioIdxWithDupName]), strings.ToLower(studio.Name.String))
+		assert.Equal(t, strings.ToLower(studioNames[studioIdxWithDupName]), strings.ToLower(studio.Name))
 
 		return nil
 	})
@@ -60,10 +59,12 @@ func TestStudioQueryNameOr(t *testing.T) {
 			Value:    studio1Name,
 			Modifier: models.CriterionModifierEquals,
 		},
-		Or: &models.StudioFilterType{
-			Name: &models.StringCriterionInput{
-				Value:    studio2Name,
-				Modifier: models.CriterionModifierEquals,
+		OperatorFilter: models.OperatorFilter[models.StudioFilterType]{
+			Or: &models.StudioFilterType{
+				Name: &models.StringCriterionInput{
+					Value:    studio2Name,
+					Modifier: models.CriterionModifierEquals,
+				},
 			},
 		},
 	}
@@ -74,8 +75,8 @@ func TestStudioQueryNameOr(t *testing.T) {
 		studios := queryStudio(ctx, t, sqb, &studioFilter, nil)
 
 		assert.Len(t, studios, 2)
-		assert.Equal(t, studio1Name, studios[0].Name.String)
-		assert.Equal(t, studio2Name, studios[1].Name.String)
+		assert.Equal(t, studio1Name, studios[0].Name)
+		assert.Equal(t, studio2Name, studios[1].Name)
 
 		return nil
 	})
@@ -91,10 +92,12 @@ func TestStudioQueryNameAndUrl(t *testing.T) {
 			Value:    studioName,
 			Modifier: models.CriterionModifierEquals,
 		},
-		And: &models.StudioFilterType{
-			URL: &models.StringCriterionInput{
-				Value:    studioUrl.String,
-				Modifier: models.CriterionModifierEquals,
+		OperatorFilter: models.OperatorFilter[models.StudioFilterType]{
+			And: &models.StudioFilterType{
+				URL: &models.StringCriterionInput{
+					Value:    studioUrl,
+					Modifier: models.CriterionModifierEquals,
+				},
 			},
 		},
 	}
@@ -105,8 +108,8 @@ func TestStudioQueryNameAndUrl(t *testing.T) {
 		studios := queryStudio(ctx, t, sqb, &studioFilter, nil)
 
 		assert.Len(t, studios, 1)
-		assert.Equal(t, studioName, studios[0].Name.String)
-		assert.Equal(t, studioUrl.String, studios[0].URL.String)
+		assert.Equal(t, studioName, studios[0].Name)
+		assert.Equal(t, studioUrl, studios[0].URL)
 
 		return nil
 	})
@@ -123,14 +126,16 @@ func TestStudioQueryNameNotUrl(t *testing.T) {
 	}
 
 	urlCriterion := models.StringCriterionInput{
-		Value:    studioUrl.String,
+		Value:    studioUrl,
 		Modifier: models.CriterionModifierEquals,
 	}
 
 	studioFilter := models.StudioFilterType{
 		Name: &nameCriterion,
-		Not: &models.StudioFilterType{
-			URL: &urlCriterion,
+		OperatorFilter: models.OperatorFilter[models.StudioFilterType]{
+			Not: &models.StudioFilterType{
+				URL: &urlCriterion,
+			},
 		},
 	}
 
@@ -140,9 +145,9 @@ func TestStudioQueryNameNotUrl(t *testing.T) {
 		studios := queryStudio(ctx, t, sqb, &studioFilter, nil)
 
 		for _, studio := range studios {
-			verifyString(t, studio.Name.String, nameCriterion)
+			verifyString(t, studio.Name, nameCriterion)
 			urlCriterion.Modifier = models.CriterionModifierNotEquals
-			verifyNullString(t, studio.URL, urlCriterion)
+			verifyString(t, studio.URL, urlCriterion)
 		}
 
 		return nil
@@ -161,8 +166,10 @@ func TestStudioIllegalQuery(t *testing.T) {
 	}
 
 	studioFilter := &models.StudioFilterType{
-		And: &subFilter,
-		Or:  &subFilter,
+		OperatorFilter: models.OperatorFilter[models.StudioFilterType]{
+			And: &subFilter,
+			Or:  &subFilter,
+		},
 	}
 
 	withTxn(func(ctx context.Context) error {
@@ -209,7 +216,7 @@ func TestStudioQueryForAutoTag(t *testing.T) {
 	withTxn(func(ctx context.Context) error {
 		tqb := db.Studio
 
-		name := studioNames[studioIdxWithMovie] // find a studio by name
+		name := studioNames[studioIdxWithGroup] // find a studio by name
 
 		studios, err := tqb.QueryForAutoTag(ctx, []string{name})
 
@@ -218,20 +225,17 @@ func TestStudioQueryForAutoTag(t *testing.T) {
 		}
 
 		assert.Len(t, studios, 1)
-		assert.Equal(t, strings.ToLower(studioNames[studioIdxWithMovie]), strings.ToLower(studios[0].Name.String))
+		assert.Equal(t, strings.ToLower(studioNames[studioIdxWithGroup]), strings.ToLower(studios[0].Name))
 
-		// find by alias
-		name = getStudioStringValue(studioIdxWithMovie, "Alias")
+		name = getStudioStringValue(studioIdxWithGroup, "Alias")
 		studios, err = tqb.QueryForAutoTag(ctx, []string{name})
 
 		if err != nil {
 			t.Errorf("Error finding studios: %s", err.Error())
 		}
-
 		if assert.Len(t, studios, 1) {
-			assert.Equal(t, studioIDs[studioIdxWithMovie], studios[0].ID)
+			assert.Equal(t, studioIDs[studioIdxWithGroup], studios[0].ID)
 		}
-
 		return nil
 	})
 }
@@ -293,7 +297,7 @@ func TestStudioDestroyParent(t *testing.T) {
 			return fmt.Errorf("Error creating parent studio: %s", err.Error())
 		}
 
-		parentID := int64(createdParent.ID)
+		parentID := createdParent.ID
 		createdChild, err := createStudio(ctx, db.Studio, childName, &parentID)
 		if err != nil {
 			return fmt.Errorf("Error creating child studio: %s", err.Error())
@@ -355,7 +359,7 @@ func TestStudioUpdateClearParent(t *testing.T) {
 			return fmt.Errorf("Error creating parent studio: %s", err.Error())
 		}
 
-		parentID := int64(createdParent.ID)
+		parentID := createdParent.ID
 		createdChild, err := createStudio(ctx, db.Studio, childName, &parentID)
 		if err != nil {
 			return fmt.Errorf("Error creating child studio: %s", err.Error())
@@ -364,18 +368,18 @@ func TestStudioUpdateClearParent(t *testing.T) {
 		sqb := db.Studio
 
 		// clear the parent id from the child
-		updatePartial := models.StudioPartial{
+		input := models.StudioPartial{
 			ID:       createdChild.ID,
-			ParentID: &sql.NullInt64{Valid: false},
+			ParentID: models.NewOptionalIntPtr(nil),
 		}
 
-		updatedStudio, err := sqb.Update(ctx, updatePartial)
+		updatedStudio, err := sqb.UpdatePartial(ctx, input)
 
 		if err != nil {
 			return fmt.Errorf("Error updated studio: %s", err.Error())
 		}
 
-		if updatedStudio.ParentID.Valid {
+		if updatedStudio.ParentID != nil {
 			return errors.New("updated studio has parent ID set")
 		}
 
@@ -550,7 +554,7 @@ func verifyStudiosGalleryCount(t *testing.T, galleryCountCriterion models.IntCri
 }
 
 func TestStudioStashIDs(t *testing.T) {
-	if err := withTxn(func(ctx context.Context) error {
+	if err := withRollbackTxn(func(ctx context.Context) error {
 		qb := db.Studio
 
 		// create studio to test against
@@ -560,11 +564,81 @@ func TestStudioStashIDs(t *testing.T) {
 			return fmt.Errorf("Error creating studio: %s", err.Error())
 		}
 
-		testStashIDReaderWriter(ctx, t, qb, created.ID)
+		studio, err := qb.Find(ctx, created.ID)
+		if err != nil {
+			return fmt.Errorf("Error getting studio: %s", err.Error())
+		}
+
+		if err := studio.LoadStashIDs(ctx, qb); err != nil {
+			return err
+		}
+
+		testStudioStashIDs(ctx, t, studio)
 		return nil
 	}); err != nil {
 		t.Error(err.Error())
 	}
+}
+
+func testStudioStashIDs(ctx context.Context, t *testing.T, s *models.Studio) {
+	qb := db.Studio
+
+	if err := s.LoadStashIDs(ctx, qb); err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	// ensure no stash IDs to begin with
+	assert.Len(t, s.StashIDs.List(), 0)
+
+	// add stash ids
+	const stashIDStr = "stashID"
+	const endpoint = "endpoint"
+	stashID := models.StashID{
+		StashID:  stashIDStr,
+		Endpoint: endpoint,
+	}
+
+	// update stash ids and ensure was updated
+	input := models.StudioPartial{
+		ID: s.ID,
+		StashIDs: &models.UpdateStashIDs{
+			StashIDs: []models.StashID{stashID},
+			Mode:     models.RelationshipUpdateModeSet,
+		},
+	}
+	var err error
+	s, err = qb.UpdatePartial(ctx, input)
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := s.LoadStashIDs(ctx, qb); err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	assert.Equal(t, []models.StashID{stashID}, s.StashIDs.List())
+
+	// remove stash ids and ensure was updated
+	input = models.StudioPartial{
+		ID: s.ID,
+		StashIDs: &models.UpdateStashIDs{
+			StashIDs: []models.StashID{stashID},
+			Mode:     models.RelationshipUpdateModeRemove,
+		},
+	}
+	s, err = qb.UpdatePartial(ctx, input)
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := s.LoadStashIDs(ctx, qb); err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	assert.Len(t, s.StashIDs.List(), 0)
 }
 
 func TestStudioQueryURL(t *testing.T) {
@@ -582,7 +656,7 @@ func TestStudioQueryURL(t *testing.T) {
 
 	verifyFn := func(ctx context.Context, g *models.Studio) {
 		t.Helper()
-		verifyNullString(t, g.URL, urlCriterion)
+		verifyString(t, g.URL, urlCriterion)
 	}
 
 	verifyStudioQuery(t, filter, verifyFn)
@@ -606,7 +680,7 @@ func TestStudioQueryURL(t *testing.T) {
 }
 
 func TestStudioQueryRating(t *testing.T) {
-	const rating = 3
+	const rating = 60
 	ratingCriterion := models.IntCriterionInput{
 		Value:    rating,
 		Modifier: models.CriterionModifierEquals,
@@ -628,6 +702,110 @@ func TestStudioQueryRating(t *testing.T) {
 
 	ratingCriterion.Modifier = models.CriterionModifierNotNull
 	verifyStudiosRating(t, ratingCriterion)
+}
+
+func queryStudios(ctx context.Context, t *testing.T, studioFilter *models.StudioFilterType, findFilter *models.FindFilterType) []*models.Studio {
+	t.Helper()
+	studios, _, err := db.Studio.Query(ctx, studioFilter, findFilter)
+	if err != nil {
+		t.Errorf("Error querying studio: %s", err.Error())
+	}
+
+	return studios
+}
+
+func TestStudioQueryTags(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		tagCriterion := models.HierarchicalMultiCriterionInput{
+			Value: []string{
+				strconv.Itoa(tagIDs[tagIdxWithStudio]),
+				strconv.Itoa(tagIDs[tagIdx1WithStudio]),
+			},
+			Modifier: models.CriterionModifierIncludes,
+		}
+
+		studioFilter := models.StudioFilterType{
+			Tags: &tagCriterion,
+		}
+
+		// ensure ids are correct
+		studios := queryStudios(ctx, t, &studioFilter, nil)
+		assert.Len(t, studios, 2)
+		for _, studio := range studios {
+			assert.True(t, studio.ID == studioIDs[studioIdxWithTag] || studio.ID == studioIDs[studioIdxWithTwoTags])
+		}
+
+		tagCriterion = models.HierarchicalMultiCriterionInput{
+			Value: []string{
+				strconv.Itoa(tagIDs[tagIdx1WithStudio]),
+				strconv.Itoa(tagIDs[tagIdx2WithStudio]),
+			},
+			Modifier: models.CriterionModifierIncludesAll,
+		}
+
+		studios = queryStudios(ctx, t, &studioFilter, nil)
+
+		assert.Len(t, studios, 1)
+		assert.Equal(t, sceneIDs[studioIdxWithTwoTags], studios[0].ID)
+
+		tagCriterion = models.HierarchicalMultiCriterionInput{
+			Value: []string{
+				strconv.Itoa(tagIDs[tagIdx1WithStudio]),
+			},
+			Modifier: models.CriterionModifierExcludes,
+		}
+
+		q := getSceneStringValue(studioIdxWithTwoTags, titleField)
+		findFilter := models.FindFilterType{
+			Q: &q,
+		}
+
+		studios = queryStudios(ctx, t, &studioFilter, &findFilter)
+		assert.Len(t, studios, 0)
+
+		return nil
+	})
+}
+
+func TestStudioQueryTagCount(t *testing.T) {
+	const tagCount = 1
+	tagCountCriterion := models.IntCriterionInput{
+		Value:    tagCount,
+		Modifier: models.CriterionModifierEquals,
+	}
+
+	verifyStudiosTagCount(t, tagCountCriterion)
+
+	tagCountCriterion.Modifier = models.CriterionModifierNotEquals
+	verifyStudiosTagCount(t, tagCountCriterion)
+
+	tagCountCriterion.Modifier = models.CriterionModifierGreaterThan
+	verifyStudiosTagCount(t, tagCountCriterion)
+
+	tagCountCriterion.Modifier = models.CriterionModifierLessThan
+	verifyStudiosTagCount(t, tagCountCriterion)
+}
+
+func verifyStudiosTagCount(t *testing.T, tagCountCriterion models.IntCriterionInput) {
+	withTxn(func(ctx context.Context) error {
+		sqb := db.Studio
+		studioFilter := models.StudioFilterType{
+			TagCount: &tagCountCriterion,
+		}
+
+		studios := queryStudios(ctx, t, &studioFilter, nil)
+		assert.Greater(t, len(studios), 0)
+
+		for _, studio := range studios {
+			ids, err := sqb.GetTagIDs(ctx, studio.ID)
+			if err != nil {
+				return err
+			}
+			verifyInt(t, len(ids), tagCountCriterion)
+		}
+
+		return nil
+	})
 }
 
 func verifyStudioQuery(t *testing.T, filter models.StudioFilterType, verifyFn func(ctx context.Context, s *models.Studio)) {
@@ -652,7 +830,7 @@ func verifyStudiosRating(t *testing.T, ratingCriterion models.IntCriterionInput)
 	withTxn(func(ctx context.Context) error {
 		sqb := db.Studio
 		studioFilter := models.StudioFilterType{
-			Rating: &ratingCriterion,
+			Rating100: &ratingCriterion,
 		}
 
 		studios, _, err := sqb.Query(ctx, &studioFilter, nil)
@@ -662,7 +840,7 @@ func verifyStudiosRating(t *testing.T, ratingCriterion models.IntCriterionInput)
 		}
 
 		for _, studio := range studios {
-			verifyInt64(t, studio.Rating, ratingCriterion)
+			verifyIntPtr(t, studio.Rating, ratingCriterion)
 		}
 
 		return nil
@@ -686,7 +864,7 @@ func TestStudioQueryIsMissingRating(t *testing.T) {
 		assert.True(t, len(studios) > 0)
 
 		for _, studio := range studios {
-			assert.True(t, !studio.Rating.Valid)
+			assert.Nil(t, studio.Rating)
 		}
 
 		return nil
@@ -716,7 +894,7 @@ func TestStudioQueryName(t *testing.T) {
 	}
 
 	verifyFn := func(ctx context.Context, studio *models.Studio) {
-		verifyNullString(t, studio.Name, *nameCriterion)
+		verifyString(t, studio.Name, *nameCriterion)
 	}
 
 	verifyStudioQuery(t, studioFilter, verifyFn)
@@ -733,7 +911,7 @@ func TestStudioQueryName(t *testing.T) {
 }
 
 func TestStudioQueryAlias(t *testing.T) {
-	const studioIdx = studioIdxWithMovie
+	const studioIdx = studioIdxWithGroup
 	studioName := getStudioStringValue(studioIdx, "Alias")
 
 	aliasCriterion := &models.StringCriterionInput{
@@ -780,34 +958,85 @@ func TestStudioQueryAlias(t *testing.T) {
 	verifyStudioQuery(t, studioFilter, verifyFn)
 }
 
-func TestStudioUpdateAlias(t *testing.T) {
-	if err := withTxn(func(ctx context.Context) error {
+func TestStudioAlias(t *testing.T) {
+	if err := withRollbackTxn(func(ctx context.Context) error {
 		qb := db.Studio
 
 		// create studio to test against
-		const name = "TestStudioUpdateAlias"
-		created, err := createStudio(ctx, qb, name, nil)
+		const name = "TestStudioAlias"
+		created, err := createStudio(ctx, db.Studio, name, nil)
 		if err != nil {
 			return fmt.Errorf("Error creating studio: %s", err.Error())
 		}
 
-		aliases := []string{"alias1", "alias2"}
-		err = qb.UpdateAliases(ctx, created.ID, aliases)
+		studio, err := qb.Find(ctx, created.ID)
 		if err != nil {
-			return fmt.Errorf("Error updating studio aliases: %s", err.Error())
+			return fmt.Errorf("Error getting studio: %s", err.Error())
 		}
 
-		// ensure aliases set
-		storedAliases, err := qb.GetAliases(ctx, created.ID)
-		if err != nil {
-			return fmt.Errorf("Error getting aliases: %s", err.Error())
+		if err := studio.LoadStashIDs(ctx, qb); err != nil {
+			return err
 		}
-		assert.Equal(t, aliases, storedAliases)
 
+		testStudioAlias(ctx, t, studio)
 		return nil
 	}); err != nil {
 		t.Error(err.Error())
 	}
+}
+
+func testStudioAlias(ctx context.Context, t *testing.T, s *models.Studio) {
+	qb := db.Studio
+	if err := s.LoadAliases(ctx, qb); err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	// ensure no alias to begin with
+	assert.Len(t, s.Aliases.List(), 0)
+
+	aliases := []string{"alias1", "alias2"}
+
+	// update alias and ensure was updated
+	input := models.StudioPartial{
+		ID: s.ID,
+		Aliases: &models.UpdateStrings{
+			Values: aliases,
+			Mode:   models.RelationshipUpdateModeSet,
+		},
+	}
+	var err error
+	s, err = qb.UpdatePartial(ctx, input)
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := s.LoadAliases(ctx, qb); err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	assert.Equal(t, aliases, s.Aliases.List())
+
+	// remove alias and ensure was updated
+	input = models.StudioPartial{
+		ID: s.ID,
+		Aliases: &models.UpdateStrings{
+			Values: aliases,
+			Mode:   models.RelationshipUpdateModeRemove,
+		},
+	}
+	s, err = qb.UpdatePartial(ctx, input)
+	if err != nil {
+		t.Error(err.Error())
+	}
+
+	if err := s.LoadAliases(ctx, qb); err != nil {
+		t.Error(err.Error())
+		return
+	}
+
+	assert.Len(t, s.Aliases.List(), 0)
 }
 
 // TestStudioQueryFast does a quick test for major errors, no result verification
@@ -842,7 +1071,7 @@ func TestStudioQueryFast(t *testing.T) {
 		URL: &testStringCriterion,
 	}
 	ratingFilter := models.StudioFilterType{
-		Rating: &testIntCriterion,
+		Rating100: &testIntCriterion,
 	}
 	sceneCountFilter := models.StudioFilterType{
 		SceneCount: &testIntCriterion,

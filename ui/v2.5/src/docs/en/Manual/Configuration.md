@@ -1,40 +1,45 @@
 # Configuration
 
-## Stashes
+## Library
 
 This section allows you to add and remove directories from your library list. Files in these directories will be included when scanning. Files that are outside of these directories will be removed when running the Clean task.
 
 > **⚠️ Note:** Don't forget to click `Save` after updating these directories!
 
-## Excluded Patterns
+## Excluded patterns
 
-Given a valid [regex](https://github.com/google/re2/wiki/Syntax), files that match even partially are excluded during the Scan process and are not entered in the database. Also during the Clean task if these files exist in the DB they are removed from it and their generated files get deleted.
+Given a valid [regex](https://github.com/google/re2/wiki/Syntax), files that match even partially are excluded during the Scan process and are not entered in the database. Also during the Clean task if these files exist in the DB they are removed from it and their generated files get deleted.  
 Prior to matching both the filenames and patterns are converted to lower case so the match is case insensitive.
 
-Regex patterns can be added in the config file or from the UI.
-If you add manually to the config file a restart is needed while from the UI you just need to click the Save button.
+Regex patterns can be added in the config file or from the UI.  
+If you add manually to the config file a restart is needed while from the UI you just need to click the Save button.  
 When added through the config file directly special care must be given to double escape the `\` character.
 
-Some examples
+There are 2 separate exclusion settings. One is for videos, another is for images/galleries.
 
-For the config file you need the following added
-```
-exclude:
-- "sample\\.mp4$"
-- "/\\.[[:word:]]+/"
-- "c:\\\\stash\\\\videos\\\\exclude"
-- "^/stash/videos/exclude/"
-- "\\\\\\\\stash\\network\\\\share\\\\excl\\\\"
-```
-* the first excludes all files ending in `sample.mp4` ( `.` needs to be escaped also)
-* the second hidden directories `/.directoryname/`
-* the third is an example for a windows directory `c:\stash\videos\exclude`
-* the fourth the directory `/stash/videos/exclude/`
-* and the last a windows network path `\\stash\network\share\excl\`
+Some examples:
 
-**Note:** if a directory is excluded for images and videos, then the directory will be excluded from scans completely.
+- `"sample\.mp4$"` will exclude all files ending in `sample.mp4`. 
+- `"/\.[[:word:]]+/"` will exclude all hidden directories like `/.directoryname/`.
+- `"c:\\stash\\videos\\exclude"` will exclude specific Windows directory `c:\stash\videos\exclude`.
+- `"^/stash/videos/exclude/"` will exclude all directories that match `/stash/videos/exclude/` pattern.
+- `"\\\\stash\\network\\share\\excl\\"` will exclude specific Windows network path `\\stash\network\share\excl\`.
 
-_a useful [link](https://regex101.com/) to experiment with regexps_
+> **Note:** If a directory is excluded for images and videos, then the directory will be excluded from scans completely.
+
+_There is a useful [regex101](https://regex101.com/) site that can help test and experiment with regexps._
+
+## Gallery creation from folders
+
+In the Library section you can find an option to create a gallery from each folder containing images. This will be applied on all libraries when activated, including the base folder of a library. 
+
+If you wish to apply this on a per folder basis, you can create a file called **.nogallery** or **.forcegallery** in a folder that should act different than this global setting.
+
+This will either exclude the folder from becoming a gallery even if the setting is set, or create a gallery from the folder even if the setting is not set. 
+
+The file will only be recognized if written in lower case letters.
+
+Files with a dot in front are handled as hidden in the Linux OS and Mac OS, so you will not see those files after creation on your system without setting your file manager accordingly.
 
 ## Hashing algorithms
 
@@ -59,29 +64,30 @@ After changing the file naming hash, any existing generated files will now be na
 These instructions are for existing users whose systems will be defaulted to use and calculate MD5 checksums. Once completed, MD5 checksums will no longer be calculated when scanning, and oshash will be used for generated file naming. Existing calculated MD5 checksums will remain on scenes, but checksums will not be calculated for new scenes.
 
 1. Scan the library (to populate oshash for all existing scenes).
-2. In Settings -> Configuration page, untick `Calculate MD5` and select `oshash` as file naming hash. Save the configuration.
+2. In Settings -> System page, untick `Calculate MD5` and select `oshash` as file naming hash. Save the configuration.
 3. In Settings -> Tasks page, click on the `Rename generated files` migration button.
 
 
-## Parallel Scan/Generation
+## Parallel scan/generation
 
 #### Number of parallel task for scan/generation
 
 This setting controls how many sub-tasks will be run in parallel during scanning and generation tasks. (See Tasks)
 
-Auto-detection can be enabled by setting this to zero. This will calculate the number of parallel tasks to be cpu_cores/4 + 1.
+Auto-detection can be enabled by setting this to zero. This will calculate the number of parallel tasks to be logical cores/4 + 1.
 
 This setting can be used to increase/decrease overall CPU utilisation in two scenarios:
-1) High performance 4+ core cpus.
-2) Media files stored on remote/cloud filesystem.
+
+1. High performance 4+ core cpus.
+2. Media files stored on remote/cloud filesystem.
 
 Note: If this is set too high it will decrease overall performance and causes failures (out of memory).
 
-## Hardware Accelerated Live Transcoding
+## Hardware accelerated live transcoding
 
 Hardware accelerated live transcoding can be enabled by setting the `FFmpeg hardware encoding` setting. Stash outputs the supported hardware encoders to the log file on startup at the Info log level. If a given hardware encoder is not supported, it's error message is logged to the Debug log level for debugging purposes.
 
-## HLS/DASH Streaming
+## HLS/DASH streaming
 
 To stream using HLS (such as on Apple devices) or DASH, the Cache path must be set. This directory is used to store temporary files during the live-transcoding process. The Cache path can be set in the System settings page. 
 
@@ -135,6 +141,7 @@ These options are typically not exposed in the UI and must be changed manually i
 |-------|---------|
 | `custom_served_folders` | A map of URLs to file system folders. See below. |
 | `custom_ui_location` | The file system folder where the UI files will be served from, instead of using the embedded UI. Empty to disable. Stash must be restarted to take effect. |
+| `developer_options.extra_blob_paths` | A list of alternative blob paths. These paths will be read for blob files. Blobs will not be written or deleted from these paths. Intended for developer use only. |
 | `max_upload_size` | Maximum file upload size for import files. Defaults to 1GB. |
 | `theme_color` | Sets the `theme-color` property in the UI. |
 | `gallery_cover_regex` | The regex responsible for selecting images as gallery covers |

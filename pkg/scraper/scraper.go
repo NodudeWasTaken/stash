@@ -31,6 +31,7 @@ type ScrapeContentType string
 const (
 	ScrapeContentTypeGallery   ScrapeContentType = "GALLERY"
 	ScrapeContentTypeMovie     ScrapeContentType = "MOVIE"
+	ScrapeContentTypeGroup     ScrapeContentType = "GROUP"
 	ScrapeContentTypePerformer ScrapeContentType = "PERFORMER"
 	ScrapeContentTypeScene     ScrapeContentType = "SCENE"
 )
@@ -38,13 +39,14 @@ const (
 var AllScrapeContentType = []ScrapeContentType{
 	ScrapeContentTypeGallery,
 	ScrapeContentTypeMovie,
+	ScrapeContentTypeGroup,
 	ScrapeContentTypePerformer,
 	ScrapeContentTypeScene,
 }
 
 func (e ScrapeContentType) IsValid() bool {
 	switch e {
-	case ScrapeContentTypeGallery, ScrapeContentTypeMovie, ScrapeContentTypePerformer, ScrapeContentTypeScene:
+	case ScrapeContentTypeGallery, ScrapeContentTypeMovie, ScrapeContentTypeGroup, ScrapeContentTypePerformer, ScrapeContentTypeScene:
 		return true
 	}
 	return false
@@ -80,6 +82,8 @@ type Scraper struct {
 	Scene *ScraperSpec `json:"scene"`
 	// Details for gallery scraper
 	Gallery *ScraperSpec `json:"gallery"`
+	// Details for movie scraper
+	Group *ScraperSpec `json:"group"`
 	// Details for movie scraper
 	Movie *ScraperSpec `json:"movie"`
 }
@@ -155,6 +159,20 @@ type Input struct {
 	Performer *ScrapedPerformerInput
 	Scene     *ScrapedSceneInput
 	Gallery   *ScrapedGalleryInput
+}
+
+// populateURL populates the URL field of the input based on the
+// URLs field of the input. Does nothing if the URL field is already set.
+func (i *Input) populateURL() {
+	if i.Scene != nil && i.Scene.URL == nil && len(i.Scene.URLs) > 0 {
+		i.Scene.URL = &i.Scene.URLs[0]
+	}
+	if i.Gallery != nil && i.Gallery.URL == nil && len(i.Gallery.URLs) > 0 {
+		i.Gallery.URL = &i.Gallery.URLs[0]
+	}
+	if i.Performer != nil && i.Performer.URL == nil && len(i.Performer.URLs) > 0 {
+		i.Performer.URL = &i.Performer.URLs[0]
+	}
 }
 
 // simple type definitions that can help customize

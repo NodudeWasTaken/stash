@@ -2,11 +2,10 @@ package api
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"strconv"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 )
 
 func (r *queryResolver) FindStudio(ctx context.Context, id string) (ret *models.Studio, err error) {
@@ -19,16 +18,30 @@ func (r *queryResolver) FindStudio(ctx context.Context, id string) (ret *models.
 		var err error
 		ret, err = r.repository.Studio.Find(ctx, idInt)
 		return err
-	}); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	}); err != nil {
 		return nil, err
 	}
 
 	return ret, nil
 }
 
-func (r *queryResolver) FindStudios(ctx context.Context, studioFilter *models.StudioFilterType, filter *models.FindFilterType) (ret *FindStudiosResultType, err error) {
+func (r *queryResolver) FindStudios(ctx context.Context, studioFilter *models.StudioFilterType, filter *models.FindFilterType, ids []string) (ret *FindStudiosResultType, err error) {
+	idInts, err := stringslice.StringSliceToIntSlice(ids)
+	if err != nil {
+		return nil, err
+	}
+
 	if err := r.withReadTxn(ctx, func(ctx context.Context) error {
-		studios, total, err := r.repository.Studio.Query(ctx, studioFilter, filter)
+		var studios []*models.Studio
+		var err error
+		var total int
+
+		if len(idInts) > 0 {
+			studios, err = r.repository.Studio.FindMany(ctx, idInts)
+			total = len(studios)
+		} else {
+			studios, total, err = r.repository.Studio.Query(ctx, studioFilter, filter)
+		}
 		if err != nil {
 			return err
 		}

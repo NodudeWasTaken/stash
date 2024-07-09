@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -11,6 +12,7 @@ import (
 	"sort"
 
 	"github.com/lucasb-eyer/go-colorful"
+	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 )
 
@@ -42,9 +44,7 @@ type Action struct {
 	// Pos is the place in percent to move to.
 	Pos int `json:"pos"`
 
-	Slope     float64
-	Intensity int64
-	Speed     float64
+	Speed float64
 }
 
 type GradientTable []struct {
@@ -73,10 +73,11 @@ func (g *InteractiveHeatmapSpeedGenerator) Generate(funscriptPath string, heatma
 		return fmt.Errorf("no valid actions in funscript")
 	}
 
+	sceneDurationMilli := int64(sceneDuration * 1000)
 	g.Funscript = funscript
 	g.Funscript.UpdateIntensityAndSpeed()
 
-	err = g.RenderHeatmap(heatmapPath)
+	err = g.RenderHeatmap(heatmapPath, sceneDurationMilli)
 
 	if err != nil {
 		return err
@@ -133,8 +134,7 @@ func (funscript *Script) UpdateIntensityAndSpeed() {
 
 	var t1, t2 int64
 	var p1, p2 int
-	var slope float64
-	var intensity int64
+	var intensity float64
 	for i := range funscript.Actions {
 		if i == 0 {
 			continue
@@ -144,19 +144,16 @@ func (funscript *Script) UpdateIntensityAndSpeed() {
 		p1 = funscript.Actions[i].Pos
 		p2 = funscript.Actions[i-1].Pos
 
-		slope = math.Min(math.Max(1/(2*float64(t1-t2)/1000), 0), 20)
-		intensity = int64(slope * math.Abs((float64)(p1-p2)))
-		speed := math.Abs(float64(p1-p2)) / float64(t1-t2) * 1000
+		speed := math.Abs(float64(p1 - p2))
+		intensity = float64(speed/float64(t1-t2)) * 1000
 
-		funscript.Actions[i].Slope = slope
-		funscript.Actions[i].Intensity = intensity
-		funscript.Actions[i].Speed = speed
+		funscript.Actions[i].Speed = intensity
 	}
 }
 
 // funscript needs to have intensity updated first
-func (g *InteractiveHeatmapSpeedGenerator) RenderHeatmap(heatmapPath string) error {
-	gradient := g.Funscript.getGradientTable(g.NumSegments)
+func (g *InteractiveHeatmapSpeedGenerator) RenderHeatmap(heatmapPath string, sceneDurationMilli int64) error {
+	gradient := g.Funscript.getGradientTable(g.NumSegments, sceneDurationMilli)
 
 	img := image.NewRGBA(image.Rect(0, 0, g.Width, g.Height))
 	for x := 0; x < g.Width; x++ {
@@ -179,7 +176,7 @@ func (g *InteractiveHeatmapSpeedGenerator) RenderHeatmap(heatmapPath string) err
 	}
 
 	// add 10 minute marks
-	maxts := g.Funscript.Actions[len(g.Funscript.Actions)-1].At
+	maxts := sceneDurationMilli
 	const tick = 600000
 	var ts int64 = tick
 	c, _ := colorful.Hex("#000000")
@@ -242,7 +239,7 @@ func (gt GradientTable) GetYRange(t float64) [2]float64 {
 	return gt[len(gt)-1].YRange
 }
 
-func (funscript Script) getGradientTable(numSegments int) GradientTable {
+func (funscript Script) getGradientTable(numSegments int, sceneDurationMilli int64) GradientTable {
 	const windowSize = 15
 	const backfillThreshold = 500
 
@@ -255,7 +252,7 @@ func (funscript Script) getGradientTable(numSegments int) GradientTable {
 	gradient := make(GradientTable, numSegments)
 	posList := []int{}
 
-	maxts := funscript.Actions[len(funscript.Actions)-1].At
+	maxts := sceneDurationMilli
 
 	for _, a := range funscript.Actions {
 		posList = append(posList, a.Pos)
@@ -291,7 +288,7 @@ func (funscript Script) getGradientTable(numSegments int) GradientTable {
 		}
 		segments[segment].at = a.At
 		segments[segment].count++
-		segments[segment].intensity += int(a.Intensity)
+		segments[segment].intensity += int(a.Speed)
 		segments[segment].yRange[0] = averageTop
 		segments[segment].yRange[1] = averageBottom
 	}
@@ -300,7 +297,7 @@ func (funscript Script) getGradientTable(numSegments int) GradientTable {
 
 	// Fill in gaps in segments
 	for i := 0; i < numSegments; i++ {
-		segmentTS := int64(float64(i) / float64(numSegments))
+		segmentTS := (maxts / int64(numSegments)) * int64(i)
 
 		// Empty segment - fill it with the previous up to backfillThreshold ms
 		if segments[i].count == 0 {
@@ -337,12 +334,12 @@ func getSegmentColor(intensity float64) colorful.Color {
 	colorBlack, _ := colorful.Hex("#0f001e")
 	colorBackground, _ := colorful.Hex("#30404d") // Same as GridCard bg
 
-	var stepSize = 60.0
+	var stepSize = 125.0
 	var f float64
 	var c colorful.Color
 
 	switch {
-	case intensity <= 0.001:
+	case intensity <= 25:
 		c = colorBackground
 	case intensity <= 1*stepSize:
 		f = (intensity - 0*stepSize) / stepSize
@@ -363,4 +360,63 @@ func getSegmentColor(intensity float64) colorful.Color {
 	}
 
 	return c
+}
+
+func LoadFunscriptData(path string) (Script, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Script{}, err
+	}
+
+	var funscript Script
+	err = json.Unmarshal(data, &funscript)
+	if err != nil {
+		return Script{}, err
+	}
+
+	if funscript.Actions == nil {
+		return Script{}, fmt.Errorf("actions list missing in %s", path)
+	}
+
+	sort.SliceStable(funscript.Actions, func(i, j int) bool { return funscript.Actions[i].At < funscript.Actions[j].At })
+
+	return funscript, nil
+}
+
+func convertRange(value int, fromLow int, fromHigh int, toLow int, toHigh int) int {
+	return ((value-fromLow)*(toHigh-toLow))/(fromHigh-fromLow) + toLow
+}
+
+func ConvertFunscriptToCSV(funscriptPath string) ([]byte, error) {
+	funscript, err := LoadFunscriptData(funscriptPath)
+
+	if err != nil {
+		return nil, err
+	}
+
+	var buffer bytes.Buffer
+	for _, action := range funscript.Actions {
+		pos := action.Pos
+
+		if funscript.Inverted {
+			pos = convertRange(pos, 0, 100, 100, 0)
+		}
+
+		if funscript.Range > 0 {
+			pos = convertRange(pos, 0, funscript.Range, 0, 100)
+		}
+
+		buffer.WriteString(fmt.Sprintf("%d,%d\r\n", action.At, pos))
+	}
+	return buffer.Bytes(), nil
+}
+
+func ConvertFunscriptToCSVFile(funscriptPath string, csvPath string) error {
+	csvBytes, err := ConvertFunscriptToCSV(funscriptPath)
+
+	if err != nil {
+		return err
+	}
+
+	return fsutil.WriteFile(csvPath, csvBytes)
 }

@@ -5,7 +5,6 @@ package sqlite_test
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"math"
 	"strconv"
@@ -13,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
-	"github.com/stashapp/stash/pkg/sqlite"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,6 +31,33 @@ func TestMarkerFindBySceneMarkerID(t *testing.T) {
 		assert.Equal(t, tagIDs[tagIdxWithMarkers], tags[0].ID)
 
 		tags, err = tqb.FindBySceneMarkerID(ctx, 0)
+
+		if err != nil {
+			t.Errorf("Error finding tags: %s", err.Error())
+		}
+
+		assert.Len(t, tags, 0)
+
+		return nil
+	})
+}
+
+func TestTagFindByGroupID(t *testing.T) {
+	withTxn(func(ctx context.Context) error {
+		tqb := db.Tag
+
+		groupID := groupIDs[groupIdxWithTag]
+
+		tags, err := tqb.FindByGroupID(ctx, groupID)
+
+		if err != nil {
+			t.Errorf("Error finding tags: %s", err.Error())
+		}
+
+		assert.Len(t, tags, 1)
+		assert.Equal(t, tagIDs[tagIdxWithGroup], tags[0].ID)
+
+		tags, err = tqb.FindByGroupID(ctx, 0)
 
 		if err != nil {
 			t.Errorf("Error finding tags: %s", err.Error())
@@ -187,7 +212,7 @@ func TestTagQuerySort(t *testing.T) {
 
 		tags := queryTags(ctx, t, sqb, nil, findFilter)
 		assert := assert.New(t)
-		assert.Equal(tagIDs[tagIdxWithScene], tags[0].ID)
+		assert.Equal(tagIDs[tagIdx2WithScene], tags[0].ID)
 
 		sortBy = "scene_markers_count"
 		tags = queryTags(ctx, t, sqb, nil, findFilter)
@@ -195,15 +220,23 @@ func TestTagQuerySort(t *testing.T) {
 
 		sortBy = "images_count"
 		tags = queryTags(ctx, t, sqb, nil, findFilter)
-		assert.Equal(tagIDs[tagIdxWithImage], tags[0].ID)
+		assert.Equal(tagIDs[tagIdx1WithImage], tags[0].ID)
 
 		sortBy = "galleries_count"
 		tags = queryTags(ctx, t, sqb, nil, findFilter)
-		assert.Equal(tagIDs[tagIdxWithGallery], tags[0].ID)
+		assert.Equal(tagIDs[tagIdx1WithGallery], tags[0].ID)
 
 		sortBy = "performers_count"
 		tags = queryTags(ctx, t, sqb, nil, findFilter)
-		assert.Equal(tagIDs[tagIdxWithPerformer], tags[0].ID)
+		assert.Equal(tagIDs[tagIdx2WithPerformer], tags[0].ID)
+
+		sortBy = "studios_count"
+		tags = queryTags(ctx, t, sqb, nil, findFilter)
+		assert.Equal(tagIDs[tagIdx2WithStudio], tags[0].ID)
+
+		sortBy = "movies_count"
+		tags = queryTags(ctx, t, sqb, nil, findFilter)
+		assert.Equal(tagIDs[tagIdx1WithGroup], tags[0].ID)
 
 		return nil
 	})
@@ -377,10 +410,7 @@ func verifyTagSceneCount(t *testing.T, sceneCountCriterion models.IntCriterionIn
 		}
 
 		for _, tag := range tags {
-			verifyInt64(t, sql.NullInt64{
-				Int64: int64(getTagSceneCount(tag.ID)),
-				Valid: true,
-			}, sceneCountCriterion)
+			verifyInt(t, getTagSceneCount(tag.ID), sceneCountCriterion)
 		}
 
 		return nil
@@ -419,10 +449,7 @@ func verifyTagMarkerCount(t *testing.T, markerCountCriterion models.IntCriterion
 		}
 
 		for _, tag := range tags {
-			verifyInt64(t, sql.NullInt64{
-				Int64: int64(getTagMarkerCount(tag.ID)),
-				Valid: true,
-			}, markerCountCriterion)
+			verifyInt(t, getTagMarkerCount(tag.ID), markerCountCriterion)
 		}
 
 		return nil
@@ -461,10 +488,7 @@ func verifyTagImageCount(t *testing.T, imageCountCriterion models.IntCriterionIn
 		}
 
 		for _, tag := range tags {
-			verifyInt64(t, sql.NullInt64{
-				Int64: int64(getTagImageCount(tag.ID)),
-				Valid: true,
-			}, imageCountCriterion)
+			verifyInt(t, getTagImageCount(tag.ID), imageCountCriterion)
 		}
 
 		return nil
@@ -503,10 +527,7 @@ func verifyTagGalleryCount(t *testing.T, imageCountCriterion models.IntCriterion
 		}
 
 		for _, tag := range tags {
-			verifyInt64(t, sql.NullInt64{
-				Int64: int64(getTagGalleryCount(tag.ID)),
-				Valid: true,
-			}, imageCountCriterion)
+			verifyInt(t, getTagGalleryCount(tag.ID), imageCountCriterion)
 		}
 
 		return nil
@@ -545,10 +566,46 @@ func verifyTagPerformerCount(t *testing.T, imageCountCriterion models.IntCriteri
 		}
 
 		for _, tag := range tags {
-			verifyInt64(t, sql.NullInt64{
-				Int64: int64(getTagPerformerCount(tag.ID)),
-				Valid: true,
-			}, imageCountCriterion)
+			verifyInt(t, getTagPerformerCount(tag.ID), imageCountCriterion)
+		}
+
+		return nil
+	})
+}
+
+func TestTagQueryStudioCount(t *testing.T) {
+	countCriterion := models.IntCriterionInput{
+		Value:    1,
+		Modifier: models.CriterionModifierEquals,
+	}
+
+	verifyTagStudioCount(t, countCriterion)
+
+	countCriterion.Modifier = models.CriterionModifierNotEquals
+	verifyTagStudioCount(t, countCriterion)
+
+	countCriterion.Modifier = models.CriterionModifierLessThan
+	verifyTagStudioCount(t, countCriterion)
+
+	countCriterion.Value = 0
+	countCriterion.Modifier = models.CriterionModifierGreaterThan
+	verifyTagStudioCount(t, countCriterion)
+}
+
+func verifyTagStudioCount(t *testing.T, imageCountCriterion models.IntCriterionInput) {
+	withTxn(func(ctx context.Context) error {
+		qb := db.Tag
+		tagFilter := models.TagFilterType{
+			StudioCount: &imageCountCriterion,
+		}
+
+		tags, _, err := qb.Query(ctx, &tagFilter, nil)
+		if err != nil {
+			t.Errorf("Error querying tag: %s", err.Error())
+		}
+
+		for _, tag := range tags {
+			verifyInt(t, getTagStudioCount(tag.ID), imageCountCriterion)
 		}
 
 		return nil
@@ -588,10 +645,7 @@ func verifyTagParentCount(t *testing.T, sceneCountCriterion models.IntCriterionI
 		}
 
 		for _, tag := range tags {
-			verifyInt64(t, sql.NullInt64{
-				Int64: int64(getTagParentCount(tag.ID)),
-				Valid: true,
-			}, sceneCountCriterion)
+			verifyInt(t, getTagParentCount(tag.ID), sceneCountCriterion)
 		}
 
 		return nil
@@ -631,10 +685,7 @@ func verifyTagChildCount(t *testing.T, sceneCountCriterion models.IntCriterionIn
 		}
 
 		for _, tag := range tags {
-			verifyInt64(t, sql.NullInt64{
-				Int64: int64(getTagChildCount(tag.ID)),
-				Valid: true,
-			}, sceneCountCriterion)
+			verifyInt(t, getTagChildCount(tag.ID), sceneCountCriterion)
 		}
 
 		return nil
@@ -805,12 +856,12 @@ func TestTagUpdateTagImage(t *testing.T) {
 		tag := models.Tag{
 			Name: name,
 		}
-		created, err := qb.Create(ctx, tag)
+		err := qb.Create(ctx, &tag)
 		if err != nil {
 			return fmt.Errorf("Error creating tag: %s", err.Error())
 		}
 
-		return testUpdateImage(t, ctx, created.ID, qb.UpdateImage, qb.GetImage)
+		return testUpdateImage(t, ctx, tag.ID, qb.UpdateImage, qb.GetImage)
 	}); err != nil {
 		t.Error(err.Error())
 	}
@@ -825,19 +876,19 @@ func TestTagUpdateAlias(t *testing.T) {
 		tag := models.Tag{
 			Name: name,
 		}
-		created, err := qb.Create(ctx, tag)
+		err := qb.Create(ctx, &tag)
 		if err != nil {
 			return fmt.Errorf("Error creating tag: %s", err.Error())
 		}
 
 		aliases := []string{"alias1", "alias2"}
-		err = qb.UpdateAliases(ctx, created.ID, aliases)
+		err = qb.UpdateAliases(ctx, tag.ID, aliases)
 		if err != nil {
 			return fmt.Errorf("Error updating tag aliases: %s", err.Error())
 		}
 
 		// ensure aliases set
-		storedAliases, err := qb.GetAliases(ctx, created.ID)
+		storedAliases, err := qb.GetAliases(ctx, tag.ID)
 		if err != nil {
 			return fmt.Errorf("Error getting aliases: %s", err.Error())
 		}
@@ -855,6 +906,7 @@ func TestTagMerge(t *testing.T) {
 	// merge tests - perform these in a transaction that we'll rollback
 	if err := withRollbackTxn(func(ctx context.Context) error {
 		qb := db.Tag
+		mqb := db.SceneMarker
 
 		// try merging into same tag
 		err := qb.Merge(ctx, []int{tagIDs[tagIdx1WithScene]}, tagIDs[tagIdx1WithScene])
@@ -873,6 +925,9 @@ func TestTagMerge(t *testing.T) {
 			tagIdxWithPerformer,
 			tagIdx1WithPerformer,
 			tagIdx2WithPerformer,
+			tagIdxWithStudio,
+			tagIdx1WithStudio,
+			tagIdx2WithStudio,
 			tagIdxWithGallery,
 			tagIdx1WithGallery,
 			tagIdx2WithGallery,
@@ -919,14 +974,14 @@ func TestTagMerge(t *testing.T) {
 		assert.Contains(sceneTagIDs, destID)
 
 		// ensure marker points to new tag
-		marker, err := sqlite.SceneMarkerReaderWriter.Find(ctx, markerIDs[markerIdxWithTag])
+		marker, err := mqb.Find(ctx, markerIDs[markerIdxWithTag])
 		if err != nil {
 			return err
 		}
 
 		assert.Equal(destID, marker.PrimaryTagID)
 
-		markerTagIDs, err := sqlite.SceneMarkerReaderWriter.GetTagIDs(ctx, marker.ID)
+		markerTagIDs, err := mqb.GetTagIDs(ctx, marker.ID)
 		if err != nil {
 			return err
 		}
@@ -960,6 +1015,14 @@ func TestTagMerge(t *testing.T) {
 		}
 
 		assert.Contains(performerTagIDs, destID)
+
+		// ensure studio points to new tag
+		studioTagIDs, err := db.Studio.GetTagIDs(ctx, studioIDs[studioIdxWithTwoTags])
+		if err != nil {
+			return err
+		}
+
+		assert.Contains(studioTagIDs, destID)
 
 		return nil
 	}); err != nil {

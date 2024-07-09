@@ -18,6 +18,7 @@ export const ScanOptions: React.FC<IScanOptions> = ({
     scanGenerateSprites,
     scanGeneratePhashes,
     scanGenerateThumbnails,
+    scanGenerateClipPreviews,
   } = options;
 
   function setOptions(input: Partial<GQL.ScanMetadataInput>) {
@@ -40,6 +41,7 @@ export const ScanOptions: React.FC<IScanOptions> = ({
         onChange={(v) => setOptions({ scanGeneratePreviews: v })}
       />
       <BooleanSetting
+        advanced
         id="scan-generate-image-previews"
         className="sub-setting"
         headingID="config.tasks.generate_previews_during_scan"
@@ -52,6 +54,7 @@ export const ScanOptions: React.FC<IScanOptions> = ({
       <BooleanSetting
         id="scan-generate-sprites"
         headingID="config.tasks.generate_sprites_during_scan"
+        tooltipID="config.tasks.generate_sprites_during_scan_tooltip"
         checked={scanGenerateSprites ?? false}
         onChange={(v) => setOptions({ scanGenerateSprites: v })}
       />
@@ -67,6 +70,12 @@ export const ScanOptions: React.FC<IScanOptions> = ({
         checked={scanGenerateThumbnails ?? false}
         headingID="config.tasks.generate_thumbnails_during_scan"
         onChange={(v) => setOptions({ scanGenerateThumbnails: v })}
+      />
+      <BooleanSetting
+        id="scan-generate-clip-previews"
+        checked={scanGenerateClipPreviews ?? false}
+        headingID="config.tasks.generate_clip_previews_during_scan"
+        onChange={(v) => setOptions({ scanGenerateClipPreviews: v })}
       />
     </>
   );

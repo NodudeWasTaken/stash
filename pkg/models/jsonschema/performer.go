@@ -34,20 +34,20 @@ func (s *StringOrStringList) UnmarshalJSON(data []byte) error {
 }
 
 type Performer struct {
-	Name           string `json:"name,omitempty"`
-	Disambiguation string `json:"disambiguation,omitempty"`
-	Gender         string `json:"gender,omitempty"`
-	URL            string `json:"url,omitempty"`
-	Twitter        string `json:"twitter,omitempty"`
-	Instagram      string `json:"instagram,omitempty"`
-	Birthdate      string `json:"birthdate,omitempty"`
-	Ethnicity      string `json:"ethnicity,omitempty"`
-	Country        string `json:"country,omitempty"`
-	EyeColor       string `json:"eye_color,omitempty"`
+	Name           string   `json:"name,omitempty"`
+	Disambiguation string   `json:"disambiguation,omitempty"`
+	Gender         string   `json:"gender,omitempty"`
+	URLs           []string `json:"urls,omitempty"`
+	Birthdate      string   `json:"birthdate,omitempty"`
+	Ethnicity      string   `json:"ethnicity,omitempty"`
+	Country        string   `json:"country,omitempty"`
+	EyeColor       string   `json:"eye_color,omitempty"`
 	// this should be int, but keeping string for backwards compatibility
 	Height        string             `json:"height,omitempty"`
 	Measurements  string             `json:"measurements,omitempty"`
 	FakeTits      string             `json:"fake_tits,omitempty"`
+	PenisLength   float64            `json:"penis_length,omitempty"`
+	Circumcised   string             `json:"circumcised,omitempty"`
 	CareerLength  string             `json:"career_length,omitempty"`
 	Tattoos       string             `json:"tattoos,omitempty"`
 	Piercings     string             `json:"piercings,omitempty"`
@@ -64,6 +64,11 @@ type Performer struct {
 	Weight        int                `json:"weight,omitempty"`
 	StashIDs      []models.StashID   `json:"stash_ids,omitempty"`
 	IgnoreAutoTag bool               `json:"ignore_auto_tag,omitempty"`
+
+	// deprecated - for import only
+	URL       string `json:"url,omitempty"`
+	Twitter   string `json:"twitter,omitempty"`
+	Instagram string `json:"instagram,omitempty"`
 }
 
 func (s Performer) Filename() string {

@@ -107,20 +107,6 @@ func (_m *PerformerReaderWriter) Destroy(ctx context.Context, id int) error {
 	return r0
 }
 
-// DestroyImage provides a mock function with given fields: ctx, performerID
-func (_m *PerformerReaderWriter) DestroyImage(ctx context.Context, performerID int) error {
-	ret := _m.Called(ctx, performerID)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, int) error); ok {
-		r0 = rf(ctx, performerID)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // Find provides a mock function with given fields: ctx, id
 func (_m *PerformerReaderWriter) Find(ctx context.Context, id int) (*models.Performer, error) {
 	ret := _m.Called(ctx, id)
@@ -397,6 +383,50 @@ func (_m *PerformerReaderWriter) GetTagIDs(ctx context.Context, relatedID int) (
 	return r0, r1
 }
 
+// GetURLs provides a mock function with given fields: ctx, relatedID
+func (_m *PerformerReaderWriter) GetURLs(ctx context.Context, relatedID int) ([]string, error) {
+	ret := _m.Called(ctx, relatedID)
+
+	var r0 []string
+	if rf, ok := ret.Get(0).(func(context.Context, int) []string); ok {
+		r0 = rf(ctx, relatedID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, relatedID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// HasImage provides a mock function with given fields: ctx, performerID
+func (_m *PerformerReaderWriter) HasImage(ctx context.Context, performerID int) (bool, error) {
+	ret := _m.Called(ctx, performerID)
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func(context.Context, int) bool); ok {
+		r0 = rf(ctx, performerID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, performerID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // Query provides a mock function with given fields: ctx, performerFilter, findFilter
 func (_m *PerformerReaderWriter) Query(ctx context.Context, performerFilter *models.PerformerFilterType, findFilter *models.FindFilterType) ([]*models.Performer, int, error) {
 	ret := _m.Called(ctx, performerFilter, findFilter)
@@ -427,20 +457,20 @@ func (_m *PerformerReaderWriter) Query(ctx context.Context, performerFilter *mod
 	return r0, r1, r2
 }
 
-// QueryCount provides a mock function with given fields: ctx, galleryFilter, findFilter
-func (_m *PerformerReaderWriter) QueryCount(ctx context.Context, galleryFilter *models.PerformerFilterType, findFilter *models.FindFilterType) (int, error) {
-	ret := _m.Called(ctx, galleryFilter, findFilter)
+// QueryCount provides a mock function with given fields: ctx, performerFilter, findFilter
+func (_m *PerformerReaderWriter) QueryCount(ctx context.Context, performerFilter *models.PerformerFilterType, findFilter *models.FindFilterType) (int, error) {
+	ret := _m.Called(ctx, performerFilter, findFilter)
 
 	var r0 int
 	if rf, ok := ret.Get(0).(func(context.Context, *models.PerformerFilterType, *models.FindFilterType) int); ok {
-		r0 = rf(ctx, galleryFilter, findFilter)
+		r0 = rf(ctx, performerFilter, findFilter)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
 
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, *models.PerformerFilterType, *models.FindFilterType) error); ok {
-		r1 = rf(ctx, galleryFilter, findFilter)
+		r1 = rf(ctx, performerFilter, findFilter)
 	} else {
 		r1 = ret.Error(1)
 	}

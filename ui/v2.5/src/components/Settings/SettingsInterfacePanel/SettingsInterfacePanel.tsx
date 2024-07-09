@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import { Button, Form } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
 import { DurationInput } from "src/components/Shared/DurationInput";
@@ -13,8 +13,8 @@ import {
   SelectSetting,
   StringSetting,
 } from "../Inputs";
-import { SettingStateContext } from "../context";
-import DurationUtils from "src/utils/duration";
+import { useSettings } from "../context";
+import TextUtils from "src/utils/text";
 import * as GQL from "src/core/generated-graphql";
 import {
   imageLightboxDisplayModeIntlMap,
@@ -47,7 +47,7 @@ import { defaultMaxOptionsShown } from "src/core/config";
 const allMenuItems = [
   { id: "scenes", headingID: "scenes" },
   { id: "images", headingID: "images" },
-  { id: "movies", headingID: "movies" },
+  { id: "groups", headingID: "groups" },
   { id: "markers", headingID: "markers" },
   { id: "galleries", headingID: "galleries" },
   { id: "performers", headingID: "performers" },
@@ -65,7 +65,23 @@ export const SettingsInterfacePanel: React.FC = () => {
     saveUI,
     loading,
     error,
-  } = React.useContext(SettingStateContext);
+  } = useSettings();
+
+  // convert old movies menu item to groups
+  const massageMenuItems = useCallback((menuItems: string[]) => {
+    return menuItems.map((item) => {
+      if (item === "movies") {
+        return "groups";
+      }
+      return item;
+    });
+  }, []);
+
+  const massagedMenuItems = useMemo(() => {
+    if (!iface.menuItems) return iface.menuItems;
+
+    return massageMenuItems(iface.menuItems);
+  }, [iface.menuItems, massageMenuItems]);
 
   const {
     interactive,
@@ -135,6 +151,40 @@ export const SettingsInterfacePanel: React.FC = () => {
     });
   }
 
+  function validateLocaleString(v: string) {
+    if (!v) return;
+    try {
+      JSON.parse(v);
+    } catch (e) {
+      throw new Error(
+        intl.formatMessage(
+          { id: "errors.invalid_json_string" },
+          {
+            error: (e as SyntaxError).message,
+          }
+        )
+      );
+    }
+  }
+
+  function validateJavascriptString(v: string) {
+    if (!v) return;
+    try {
+      // creates a function from the string to validate it but does not execute it
+      // eslint-disable-next-line @typescript-eslint/no-implied-eval
+      new Function(v);
+    } catch (e) {
+      throw new Error(
+        intl.formatMessage(
+          { id: "errors.invalid_javascript_string" },
+          {
+            error: (e as SyntaxError).message,
+          }
+        )
+      );
+    }
+  }
+
   if (error) return <h1>{error.message}</h1>;
   if (loading) return <LoadingIndicator />;
 
@@ -148,8 +198,10 @@ export const SettingsInterfacePanel: React.FC = () => {
           value={iface.language ?? undefined}
           onChange={(v) => saveInterface({ language: v })}
         >
+          <option value="af-ZA">Afrikaans (Preview)</option>
           <option value="bn-BD">বাংলা (বাংলাদেশ) (Preview)</option>
-          <option value="cs-CZ">Čeština (Preview)</option>
+          <option value="ca-ES">Catalan (Preview)</option>
+          <option value="cs-CZ">Čeština (Česko)</option>
           <option value="da-DK">Dansk (Danmark)</option>
           <option value="de-DE">Deutsch (Deutschland)</option>
           <option value="en-GB">English (United Kingdom)</option>
@@ -159,6 +211,7 @@ export const SettingsInterfacePanel: React.FC = () => {
           <option value="fi-FI">Suomi</option>
           <option value="fr-FR">Français (France)</option>
           <option value="hr-HR">Hrvatski (Preview)</option>
+          <option value="id-ID">Indonesian (Preview)</option>
           <option value="hu-HU">Magyar (Preview)</option>
           <option value="it-IT">Italiano</option>
           <option value="ja-JP">日本語 (日本)</option>
@@ -194,8 +247,8 @@ export const SettingsInterfacePanel: React.FC = () => {
           <CheckboxGroup
             groupId="menu-items"
             items={allMenuItems}
-            checkedIds={iface.menuItems ?? undefined}
-            onChange={(v) => saveInterface({ menuItems: v })}
+            checkedIds={massagedMenuItems ?? undefined}
+            onChange={(v) => saveInterface({ menuItems: massageMenuItems(v) })}
           />
         </div>
 
@@ -240,6 +293,7 @@ export const SettingsInterfacePanel: React.FC = () => {
         />
 
         <SelectSetting
+          advanced
           id="wall-preview"
           headingID="config.ui.preview_type.heading"
           subHeadingID="config.ui.preview_type.description"
@@ -273,6 +327,18 @@ export const SettingsInterfacePanel: React.FC = () => {
 
       <SettingSection headingID="config.ui.scene_player.heading">
         <BooleanSetting
+          id="enable-chromecast"
+          headingID="config.ui.scene_player.options.enable_chromecast"
+          checked={ui.enableChromecast ?? undefined}
+          onChange={(v) => saveUI({ enableChromecast: v })}
+        />
+        <BooleanSetting
+          id="disable-mobile-media-auto-rotate"
+          headingID="config.ui.scene_player.options.disable_mobile_media_auto_rotate"
+          checked={ui.disableMobileMediaAutoRotateEnabled ?? undefined}
+          onChange={(v) => saveUI({ disableMobileMediaAutoRotateEnabled: v })}
+        />
+        <BooleanSetting
           id="show-scrubber"
           headingID="config.ui.scene_player.options.show_scrubber"
           checked={iface.showScrubber ?? undefined}
@@ -287,8 +353,15 @@ export const SettingsInterfacePanel: React.FC = () => {
         <BooleanSetting
           id="track-activity"
           headingID="config.ui.scene_player.options.track_activity"
-          checked={ui.trackActivity ?? undefined}
+          checked={ui.trackActivity ?? true}
           onChange={(v) => saveUI({ trackActivity: v })}
+        />
+        <StringSetting
+          id="vr-tag"
+          headingID="config.ui.scene_player.options.vr_tag.heading"
+          subHeadingID="config.ui.scene_player.options.vr_tag.description"
+          value={ui.vrTag ?? undefined}
+          onChange={(v) => saveUI({ vrTag: v })}
         />
         <ModalSetting<number>
           id="ignore-interval"
@@ -343,13 +416,20 @@ export const SettingsInterfacePanel: React.FC = () => {
           onChange={(v) => saveInterface({ maximumLoopDuration: v })}
           renderField={(value, setValue) => (
             <DurationInput
-              numericValue={value}
-              onValueChange={(duration) => setValue(duration ?? 0)}
+              value={value}
+              setValue={(duration) => setValue(duration ?? 0)}
             />
           )}
           renderValue={(v) => {
-            return <span>{DurationUtils.secondsToString(v ?? 0)}</span>;
+            return <span>{TextUtils.secondsToTimestamp(v ?? 0)}</span>;
           }}
+        />
+
+        <BooleanSetting
+          id="show-ab-loop"
+          headingID="config.ui.scene_player.options.show_ab_loop_controls"
+          checked={ui.showAbLoopControls ?? undefined}
+          onChange={(v) => saveUI({ showAbLoopControls: v })}
         />
       </SettingSection>
       <SettingSection headingID="config.ui.tag_panel.heading">
@@ -480,6 +560,64 @@ export const SettingsInterfacePanel: React.FC = () => {
         />
       </SettingSection>
 
+      <SettingSection headingID="config.ui.detail.heading">
+        <div className="setting-group">
+          <div className="setting">
+            <div>
+              <h3>
+                {intl.formatMessage({
+                  id: "config.ui.detail.enable_background_image.heading",
+                })}
+              </h3>
+              <div className="sub-heading">
+                {intl.formatMessage({
+                  id: "config.ui.detail.enable_background_image.description",
+                })}
+              </div>
+            </div>
+            <div />
+          </div>
+          <BooleanSetting
+            id="enableMovieBackgroundImage"
+            headingID="group"
+            checked={ui.enableMovieBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enableMovieBackgroundImage: v })}
+          />
+          <BooleanSetting
+            id="enablePerformerBackgroundImage"
+            headingID="performer"
+            checked={ui.enablePerformerBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enablePerformerBackgroundImage: v })}
+          />
+          <BooleanSetting
+            id="enableStudioBackgroundImage"
+            headingID="studio"
+            checked={ui.enableStudioBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enableStudioBackgroundImage: v })}
+          />
+          <BooleanSetting
+            id="enableTagBackgroundImage"
+            headingID="tag"
+            checked={ui.enableTagBackgroundImage ?? undefined}
+            onChange={(v) => saveUI({ enableTagBackgroundImage: v })}
+          />
+        </div>
+        <BooleanSetting
+          id="show_all_details"
+          headingID="config.ui.detail.show_all_details.heading"
+          subHeadingID="config.ui.detail.show_all_details.description"
+          checked={ui.showAllDetails ?? true}
+          onChange={(v) => saveUI({ showAllDetails: v })}
+        />
+        <BooleanSetting
+          id="compact_expanded_details"
+          headingID="config.ui.detail.compact_expanded_details.heading"
+          subHeadingID="config.ui.detail.compact_expanded_details.description"
+          checked={ui.compactExpandedDetails ?? undefined}
+          onChange={(v) => saveUI({ compactExpandedDetails: v })}
+        />
+      </SettingSection>
+
       <SettingSection headingID="config.ui.editing.heading">
         <div className="setting-group">
           <div className="setting">
@@ -532,6 +670,19 @@ export const SettingsInterfacePanel: React.FC = () => {
                 disableDropdownCreate: {
                   ...iface.disableDropdownCreate,
                   tag: v,
+                },
+              })
+            }
+          />
+          <BooleanSetting
+            id="disableDropdownCreate_group"
+            headingID="group"
+            checked={iface.disableDropdownCreate?.movie ?? undefined}
+            onChange={(v) =>
+              saveInterface({
+                disableDropdownCreate: {
+                  ...iface.disableDropdownCreate,
+                  movie: v,
                 },
               })
             }
@@ -625,16 +776,23 @@ export const SettingsInterfacePanel: React.FC = () => {
           subHeadingID="config.ui.custom_javascript.description"
           value={iface.javascript ?? undefined}
           onChange={(v) => saveInterface({ javascript: v })}
-          renderField={(value, setValue) => (
-            <Form.Control
-              as="textarea"
-              value={value}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                setValue(e.currentTarget.value)
-              }
-              rows={16}
-              className="text-input code"
-            />
+          validateChange={validateJavascriptString}
+          renderField={(value, setValue, err) => (
+            <>
+              <Form.Control
+                as="textarea"
+                value={value}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setValue(e.currentTarget.value)
+                }
+                rows={16}
+                className="text-input code"
+                isInvalid={!!err}
+              />
+              <Form.Control.Feedback type="invalid">
+                {err}
+              </Form.Control.Feedback>
+            </>
           )}
           renderValue={() => {
             return <></>;
@@ -655,16 +813,23 @@ export const SettingsInterfacePanel: React.FC = () => {
           subHeadingID="config.ui.custom_locales.description"
           value={iface.customLocales ?? undefined}
           onChange={(v) => saveInterface({ customLocales: v })}
-          renderField={(value, setValue) => (
-            <Form.Control
-              as="textarea"
-              value={value}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                setValue(e.currentTarget.value)
-              }
-              rows={16}
-              className="text-input code"
-            />
+          validateChange={validateLocaleString}
+          renderField={(value, setValue, err) => (
+            <>
+              <Form.Control
+                as="textarea"
+                value={value}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setValue(e.currentTarget.value)
+                }
+                rows={16}
+                className="text-input code"
+                isInvalid={!!err}
+              />
+              <Form.Control.Feedback type="invalid">
+                {err}
+              </Form.Control.Feedback>
+            </>
           )}
           renderValue={() => {
             return <></>;
@@ -748,6 +913,14 @@ export const SettingsInterfacePanel: React.FC = () => {
           subHeadingID="config.ui.funscript_offset.description"
           value={iface.funscriptOffset ?? undefined}
           onChange={(v) => saveInterface({ funscriptOffset: v })}
+        />
+
+        <BooleanSetting
+          id="use-stash-hosted-funscript"
+          headingID="config.ui.use_stash_hosted_funscript.heading"
+          subHeadingID="config.ui.use_stash_hosted_funscript.description"
+          checked={iface.useStashHostedFunscript ?? false}
+          onChange={(v) => saveInterface({ useStashHostedFunscript: v })}
         />
       </SettingSection>
     </>

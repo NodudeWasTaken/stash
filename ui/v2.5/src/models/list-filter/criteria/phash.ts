@@ -1,15 +1,19 @@
-import { CriterionModifier } from "src/core/generated-graphql";
+import {
+  CriterionModifier,
+  PhashDistanceCriterionInput,
+  PHashDuplicationCriterionInput,
+} from "src/core/generated-graphql";
+import { IPhashDistanceValue } from "../types";
 import {
   BooleanCriterionOption,
+  Criterion,
   CriterionOption,
-  PhashDuplicateCriterion,
   StringCriterion,
 } from "./criterion";
 
 export const PhashCriterionOption = new CriterionOption({
   messageID: "media_info.phash",
-  type: "phash",
-  parameterName: "phash",
+  type: "phash_distance",
   inputType: "text",
   modifierOptions: [
     CriterionModifier.Equals,
@@ -17,22 +21,50 @@ export const PhashCriterionOption = new CriterionOption({
     CriterionModifier.IsNull,
     CriterionModifier.NotNull,
   ],
+  makeCriterion: () => new PhashCriterion(),
 });
 
-export class PhashCriterion extends StringCriterion {
+export class PhashCriterion extends Criterion<IPhashDistanceValue> {
   constructor() {
-    super(PhashCriterionOption);
+    super(PhashCriterionOption, { value: "", distance: 0 });
+  }
+
+  protected getLabelValue() {
+    const { value, distance } = this.value;
+    if (
+      (this.modifier === CriterionModifier.Equals ||
+        this.modifier === CriterionModifier.NotEquals) &&
+      distance
+    ) {
+      return `${value} (${distance})`;
+    } else {
+      return `${value}`;
+    }
+  }
+
+  public toCriterionInput(): PhashDistanceCriterionInput {
+    return {
+      value: this.value.value,
+      modifier: this.modifier,
+      distance: this.value.distance,
+    };
   }
 }
 
 export const DuplicatedCriterionOption = new BooleanCriterionOption(
   "duplicated_phash",
   "duplicated",
-  "duplicated"
+  () => new DuplicatedCriterion()
 );
 
-export class DuplicatedCriterion extends PhashDuplicateCriterion {
+export class DuplicatedCriterion extends StringCriterion {
   constructor() {
     super(DuplicatedCriterionOption);
+  }
+
+  public toCriterionInput(): PHashDuplicationCriterionInput {
+    return {
+      duplicated: this.value === "true",
+    };
   }
 }

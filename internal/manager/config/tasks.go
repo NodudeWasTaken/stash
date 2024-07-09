@@ -1,12 +1,8 @@
 package config
 
 type ScanMetadataOptions struct {
-	// Set name, date, details from metadata (if present)
-	// Deprecated: not implemented
-	UseFileMetadata bool `json:"useFileMetadata"`
-	// Strip file extension from title
-	// Deprecated: not implemented
-	StripFileExtension bool `json:"stripFileExtension"`
+	// Forces a rescan on files even if they have not changed
+	Rescan bool `json:"rescan"`
 	// Generate scene covers during scan
 	ScanGenerateCovers bool `json:"scanGenerateCovers"`
 	// Generate previews during scan
@@ -19,6 +15,8 @@ type ScanMetadataOptions struct {
 	ScanGeneratePhashes bool `json:"scanGeneratePhashes"`
 	// Generate image thumbnails during scan
 	ScanGenerateThumbnails bool `json:"scanGenerateThumbnails"`
+	// Generate image thumbnails during scan
+	ScanGenerateClipPreviews bool `json:"scanGenerateClipPreviews"`
 }
 
 type AutoTagMetadataOptions struct {

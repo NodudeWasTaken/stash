@@ -1,11 +1,13 @@
 #performer-page {
-  flex-direction: row;
-  margin: 0 auto;
-  overflow: hidden;
+  .performer-image-container {
+    .btn {
+      box-shadow: none;
+    }
 
-  .performer-image-container .performer {
-    max-height: calc(100vh - 6rem);
-    max-width: 100%;
+    .performer {
+      max-height: calc(100vh - 6rem);
+      max-width: 100%;
+    }
   }
 
   .content-container {
@@ -14,12 +16,9 @@
 
   .performer-head {
     display: inline-block;
-    margin-bottom: 2rem;
     vertical-align: top;
 
     .name-icons {
-      margin-left: 10px;
-
       .not-favorite {
         color: rgba(191, 204, 214, 0.5);
       }
@@ -28,21 +27,8 @@
         color: #ff7373;
       }
 
-      .link {
-        color: rgb(191, 204, 214);
-      }
-
       .instagram {
         color: pink;
-      }
-
-      .icon-link {
-        padding: 0;
-
-        a {
-          display: inline-block;
-          padding: $btn-padding-y $btn-padding-x;
-        }
       }
     }
 
@@ -68,12 +54,16 @@
 .performer-card {
   width: 20rem;
 
+  @media (max-width: 576px) {
+    width: 100%;
+  }
+
   .thumbnail-section {
     position: relative;
   }
 
   &-image {
-    height: 30rem;
+    aspect-ratio: 2/3;
     min-width: 11.25rem;
     object-fit: cover;
     object-position: top;
@@ -90,35 +80,14 @@
   }
 
   button.btn.favorite-button {
-    opacity: 1;
     padding: 0;
     position: absolute;
     right: 5px;
     top: 10px;
-    transition: opacity 0.5s;
 
     svg.fa-icon {
       margin-left: 0.4rem;
       margin-right: 0.4rem;
-    }
-
-    &.not-favorite {
-      color: rgba(191, 204, 214, 0.5);
-      filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
-      opacity: 0;
-    }
-
-    &.favorite {
-      color: #ff7373;
-      filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.9));
-    }
-
-    &:hover,
-    &:active,
-    &:focus,
-    &:active:focus {
-      background: none;
-      box-shadow: none;
     }
   }
 
@@ -155,13 +124,14 @@
 
 .PerformerScrapeModal {
   &-list {
-    list-style-type: none;
+    list-style: none;
     max-height: 50vh;
-    overflow-x: auto;
-    padding-left: 1rem;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding-inline-start: 0;
 
-    .btn {
-      font-size: 1.2rem;
+    li {
+      cursor: pointer;
     }
   }
 }
@@ -184,33 +154,73 @@
   color: #c8a2c8;
 }
 
-.performer-height {
-  .height-imperial {
-    &::before {
-      content: " (";
-    }
+.performer-height .height-imperial,
+.performer-weight .weight-imperial,
+.performer-penis-length .penis-length-imperial {
+  &::before {
+    content: " (";
+  }
 
-    &::after {
-      content: ")";
-    }
+  &::after {
+    content: ")";
   }
 }
 
-.performer-weight {
-  .weight-imperial {
-    &::before {
-      content: " (";
-    }
-
-    &::after {
-      content: ")";
-    }
+.penis-circumcised {
+  &::before {
+    content: " ";
   }
 }
 
+.favourite-data .favorite {
+  color: #ff7373;
+}
+
+.performer-table .height-imperial,
+.performer-table .weight-imperial,
+.performer-table .penis-length-imperial,
 .performer-disambiguation {
   color: $text-muted;
-  /* stylelint-disable */
   font-size: 0.875em;
-  /* stylelint-enable */
+}
+
+.performer-table .age-data span {
+  border-bottom: 1px dotted #f5f8fa;
+}
+
+.performer-result .performer-details > span {
+  &::after {
+    content: " • ";
+  }
+
+  &:last-child::after {
+    content: "";
+  }
+}
+
+.performer-select {
+  .performer-disambiguation {
+    white-space: pre;
+  }
+
+  .performer-select-value .performer-disambiguation {
+    color: initial;
+  }
+
+  .alias {
+    font-weight: bold;
+    white-space: pre;
+  }
+
+  .performer-select-image {
+    margin-right: 0.5em;
+    max-height: 50px;
+    max-width: 50px;
+  }
+}
+
+.edit-performers-dialog .modal-body {
+  max-height: calc(100vh - 12rem);
+  overflow-y: auto;
+  padding-right: 1.5rem;
 }

@@ -1,33 +1,26 @@
 import React from "react";
 import { Route, Switch } from "react-router-dom";
-import { useIntl } from "react-intl";
 import { Helmet } from "react-helmet";
-import { TITLE_SUFFIX } from "../Shared/constants";
-import { PersistanceLevel } from "../List/ItemList";
+import { useTitleProps } from "src/hooks/title";
 import Gallery from "./GalleryDetails/Gallery";
 import GalleryCreate from "./GalleryDetails/GalleryCreate";
 import { GalleryList } from "./GalleryList";
+import { useScrollToTopOnMount } from "src/hooks/scrollToTop";
+import { View } from "../List/views";
 
 const Galleries: React.FC = () => {
-  const intl = useIntl();
+  useScrollToTopOnMount();
 
-  const title_template = `${intl.formatMessage({
-    id: "galleries",
-  })} ${TITLE_SUFFIX}`;
+  return <GalleryList view={View.Galleries} />;
+};
+
+const GalleryRoutes: React.FC = () => {
+  const titleProps = useTitleProps({ id: "galleries" });
   return (
     <>
-      <Helmet
-        defaultTitle={title_template}
-        titleTemplate={`%s | ${title_template}`}
-      />
+      <Helmet {...titleProps} />
       <Switch>
-        <Route
-          exact
-          path="/galleries"
-          render={(props) => (
-            <GalleryList {...props} persistState={PersistanceLevel.ALL} />
-          )}
-        />
+        <Route exact path="/galleries" component={Galleries} />
         <Route exact path="/galleries/new" component={GalleryCreate} />
         <Route path="/galleries/:id/:tab?" component={Gallery} />
       </Switch>
@@ -35,4 +28,4 @@ const Galleries: React.FC = () => {
   );
 };
 
-export default Galleries;
+export default GalleryRoutes;
