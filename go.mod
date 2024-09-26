@@ -32,6 +32,7 @@ require (
 	github.com/kermieisinthehouse/gosx-notifier v0.1.2
 	github.com/kermieisinthehouse/systray v1.2.4
 	github.com/knadh/koanf v1.5.0
+	github.com/lib/pq v1.10.9
 	github.com/lucasb-eyer/go-colorful v1.2.0
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/mitchellh/mapstructure v1.5.0
