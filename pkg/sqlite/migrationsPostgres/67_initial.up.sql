@@ -1,3 +1,4 @@
+CREATE COLLATION NATURAL_CI (provider = icu, locale = 'en@colNumeric=yes');
 CREATE TABLE blobs (
     checksum varchar(255) NOT NULL PRIMARY KEY,
     blob bytea
@@ -13,6 +14,15 @@ CREATE TABLE tags (
   REFERENCES blobs(checksum), 
   favorite boolean not null default false
 );
+CREATE TABLE folders (
+  id serial not null primary key,
+  path varchar(255) NOT NULL,
+  parent_folder_id integer,
+  mod_time timestamp not null,
+  created_at timestamp not null,
+  updated_at timestamp not null, 
+  foreign key(parent_folder_id) references folders(id) on delete SET NULL
+);
 CREATE TABLE files (
   id serial not null primary key,
   basename varchar(255) NOT NULL,
@@ -23,23 +33,11 @@ CREATE TABLE files (
   created_at timestamp not null,
   updated_at timestamp not null,
   foreign key(zip_file_id) references files(id),
+  foreign key(parent_folder_id) references folders(id),
   CHECK (basename != '')
 );
-CREATE TABLE folders (
-  id serial not null primary key,
-  path varchar(255) NOT NULL,
-  parent_folder_id integer,
-  mod_time timestamp not null,
-  created_at timestamp not null,
-  updated_at timestamp not null, 
-  zip_file_id integer REFERENCES files(id),
-  foreign key(parent_folder_id) references folders(id) on delete SET NULL
-);
-ALTER TABLE files 
-	ADD CONSTRAINT foreign_key_parent_folder_id 
-	FOREIGN KEY (parent_folder_id) 
-	REFERENCES folders (id);
-CREATE TABLE IF NOT EXISTS "performers" (
+ALTER TABLE folders ADD COLUMN zip_file_id integer REFERENCES files(id);
+CREATE TABLE IF NOT EXISTS performers (
   id serial not null primary key,
   name varchar(255) not null,
   disambiguation varchar(255),
@@ -67,7 +65,7 @@ CREATE TABLE IF NOT EXISTS "performers" (
   penis_length float, 
   circumcised varchar[10]
 );
-CREATE TABLE IF NOT EXISTS "studios" (
+CREATE TABLE IF NOT EXISTS studios (
   id serial not null primary key,
   name VARCHAR(255) NOT NULL,
   url VARCHAR(255),
@@ -81,7 +79,7 @@ CREATE TABLE IF NOT EXISTS "studios" (
   favorite boolean not null default FALSE,
   CHECK (id != parent_id)
 );
-CREATE TABLE IF NOT EXISTS "saved_filters" (
+CREATE TABLE IF NOT EXISTS saved_filters (
   id serial not null primary key,
   name varchar(510) not null,
   mode varchar(255) not null,
@@ -89,7 +87,7 @@ CREATE TABLE IF NOT EXISTS "saved_filters" (
   object_filter bytea,
   ui_options bytea
 );
-CREATE TABLE IF NOT EXISTS "images" (
+CREATE TABLE IF NOT EXISTS images (
   id serial not null primary key,
   title varchar(255),
   rating smallint,
@@ -108,7 +106,7 @@ CREATE TABLE image_urls (
   foreign key(image_id) references images(id) on delete CASCADE,
   PRIMARY KEY(image_id, position, url)
 );
-CREATE TABLE IF NOT EXISTS "galleries" (
+CREATE TABLE IF NOT EXISTS galleries (
   id serial not null primary key,
   folder_id integer,
   title varchar(255),
@@ -129,7 +127,7 @@ CREATE TABLE gallery_urls (
   foreign key(gallery_id) references galleries(id) on delete CASCADE,
   PRIMARY KEY(gallery_id, position, url)
 );
-CREATE TABLE IF NOT EXISTS "scenes" (
+CREATE TABLE IF NOT EXISTS scenes (
   id serial not null primary key,
   title varchar(255),
   details text,
@@ -146,7 +144,7 @@ CREATE TABLE IF NOT EXISTS "scenes" (
   cover_blob varchar(255) REFERENCES blobs(checksum),
   foreign key(studio_id) references studios(id) on delete SET NULL
 );
-CREATE TABLE IF NOT EXISTS "groups" (
+CREATE TABLE IF NOT EXISTS groups (
   id serial not null primary key,
   name varchar(255) not null,
   aliases varchar(255),
@@ -161,14 +159,14 @@ CREATE TABLE IF NOT EXISTS "groups" (
   front_image_blob varchar(255) REFERENCES blobs(checksum), 
   back_image_blob varchar(255) REFERENCES blobs(checksum)
 );
-CREATE TABLE IF NOT EXISTS "group_urls" (
+CREATE TABLE IF NOT EXISTS group_urls (
   "group_id" integer NOT NULL,
   position integer NOT NULL,
   url varchar(255) NOT NULL,
   foreign key("group_id") references "groups"(id) on delete CASCADE,
   PRIMARY KEY("group_id", position, url)
 );
-CREATE TABLE IF NOT EXISTS "groups_tags" (
+CREATE TABLE IF NOT EXISTS groups_tags (
   "group_id" integer NOT NULL,
   tag_id integer NOT NULL,
   foreign key("group_id") references "groups"(id) on delete CASCADE,
@@ -189,12 +187,12 @@ CREATE TABLE studios_tags (
   foreign key(tag_id) references tags(id) on delete CASCADE,
   PRIMARY KEY(studio_id, tag_id)
 );
-CREATE TABLE IF NOT EXISTS "scenes_view_dates" (
+CREATE TABLE IF NOT EXISTS scenes_view_dates (
   scene_id integer not null,
   view_date timestamp not null,
   foreign key(scene_id) references scenes(id) on delete CASCADE
 );
-CREATE TABLE IF NOT EXISTS "scenes_o_dates" (
+CREATE TABLE IF NOT EXISTS scenes_o_dates (
   scene_id integer not null,
   o_date timestamp not null,
   foreign key(scene_id) references scenes(id) on delete CASCADE
@@ -278,14 +276,14 @@ CREATE TABLE scenes_files (
     foreign key(file_id) references files(id) on delete CASCADE,
     PRIMARY KEY(scene_id, file_id)
 );
-CREATE TABLE IF NOT EXISTS "performers_scenes" (
+CREATE TABLE IF NOT EXISTS performers_scenes (
   performer_id integer,
   scene_id integer,
   foreign key(performer_id) references performers(id) on delete CASCADE,
   foreign key(scene_id) references scenes(id) on delete CASCADE,
   PRIMARY KEY (scene_id, performer_id)
 );
-CREATE TABLE IF NOT EXISTS "scene_markers" (
+CREATE TABLE IF NOT EXISTS scene_markers (
   id serial not null primary key,
   title VARCHAR(255) NOT NULL,
   seconds FLOAT NOT NULL,
@@ -296,21 +294,21 @@ CREATE TABLE IF NOT EXISTS "scene_markers" (
   FOREIGN KEY(primary_tag_id) REFERENCES tags(id),
   FOREIGN KEY(scene_id) REFERENCES scenes(id)
 );
-CREATE TABLE IF NOT EXISTS "scene_markers_tags" (
+CREATE TABLE IF NOT EXISTS scene_markers_tags (
   scene_marker_id integer,
   tag_id integer,
   foreign key(scene_marker_id) references scene_markers(id) on delete CASCADE,
   foreign key(tag_id) references tags(id) on delete CASCADE,
   PRIMARY KEY(scene_marker_id, tag_id)
 );
-CREATE TABLE IF NOT EXISTS "scenes_tags" (
+CREATE TABLE IF NOT EXISTS scenes_tags (
   scene_id integer,
   tag_id integer,
   foreign key(scene_id) references scenes(id) on delete CASCADE,
   foreign key(tag_id) references tags(id) on delete CASCADE,
   PRIMARY KEY(scene_id, tag_id)
 );
-CREATE TABLE IF NOT EXISTS "groups_scenes" (
+CREATE TABLE IF NOT EXISTS groups_scenes (
   "group_id" integer,
   scene_id integer,
   scene_index smallint,
@@ -318,35 +316,35 @@ CREATE TABLE IF NOT EXISTS "groups_scenes" (
   foreign key(scene_id) references scenes(id) on delete cascade,
   PRIMARY KEY("group_id", scene_id)
 );
-CREATE TABLE IF NOT EXISTS "performers_images" (
+CREATE TABLE IF NOT EXISTS performers_images (
   performer_id integer,
   image_id integer,
   foreign key(performer_id) references performers(id) on delete CASCADE,
   foreign key(image_id) references images(id) on delete CASCADE,
   PRIMARY KEY(image_id, performer_id)
 );
-CREATE TABLE IF NOT EXISTS "images_tags" (
+CREATE TABLE IF NOT EXISTS images_tags (
   image_id integer,
   tag_id integer,
   foreign key(image_id) references images(id) on delete CASCADE,
   foreign key(tag_id) references tags(id) on delete CASCADE,
   PRIMARY KEY(image_id, tag_id)
 );
-CREATE TABLE IF NOT EXISTS "scene_stash_ids" (
+CREATE TABLE IF NOT EXISTS scene_stash_ids (
   scene_id integer NOT NULL,
   endpoint varchar(255) NOT NULL,
   stash_id varchar(36) NOT NULL,
   foreign key(scene_id) references scenes(id) on delete CASCADE,
   PRIMARY KEY(scene_id, endpoint)
 );
-CREATE TABLE IF NOT EXISTS "scenes_galleries" (
+CREATE TABLE IF NOT EXISTS scenes_galleries (
   scene_id integer NOT NULL,
   gallery_id integer NOT NULL,
   foreign key(scene_id) references scenes(id) on delete CASCADE,
   foreign key(gallery_id) references galleries(id) on delete CASCADE,
   PRIMARY KEY(scene_id, gallery_id)
 );
-CREATE TABLE IF NOT EXISTS "galleries_images" (
+CREATE TABLE IF NOT EXISTS galleries_images (
   gallery_id integer NOT NULL,
   image_id integer NOT NULL, 
   cover boolean not null default FALSE,
@@ -354,34 +352,34 @@ CREATE TABLE IF NOT EXISTS "galleries_images" (
   foreign key(image_id) references images(id) on delete CASCADE,
   PRIMARY KEY(gallery_id, image_id)
 );
-CREATE TABLE IF NOT EXISTS "performers_galleries" (
+CREATE TABLE IF NOT EXISTS performers_galleries (
   performer_id integer NOT NULL,
   gallery_id integer NOT NULL,
   foreign key(performer_id) references performers(id) on delete CASCADE,
   foreign key(gallery_id) references galleries(id) on delete CASCADE,
   PRIMARY KEY(gallery_id, performer_id)
 );
-CREATE TABLE IF NOT EXISTS "galleries_tags" (
+CREATE TABLE IF NOT EXISTS galleries_tags (
   gallery_id integer NOT NULL,
   tag_id integer NOT NULL,
   foreign key(gallery_id) references galleries(id) on delete CASCADE,
   foreign key(tag_id) references tags(id) on delete CASCADE,
   PRIMARY KEY(gallery_id, tag_id)
 );
-CREATE TABLE IF NOT EXISTS "performers_tags" (
+CREATE TABLE IF NOT EXISTS performers_tags (
   performer_id integer NOT NULL,
   tag_id integer NOT NULL,
   foreign key(performer_id) references performers(id) on delete CASCADE,
   foreign key(tag_id) references tags(id) on delete CASCADE,
   PRIMARY KEY(performer_id, tag_id)
 );
-CREATE TABLE IF NOT EXISTS "tag_aliases" (
+CREATE TABLE IF NOT EXISTS tag_aliases (
   tag_id integer NOT NULL,
   alias varchar(255) NOT NULL,
   foreign key(tag_id) references tags(id) on delete CASCADE,
   PRIMARY KEY(tag_id, alias)
 );
-CREATE TABLE IF NOT EXISTS "studio_aliases" (
+CREATE TABLE IF NOT EXISTS studio_aliases (
   studio_id integer NOT NULL,
   alias varchar(255) NOT NULL,
   foreign key(studio_id) references studios(id) on delete CASCADE,
@@ -438,7 +436,7 @@ CREATE INDEX index_studio_stash_ids_on_studio_id ON studio_stash_ids (studio_id)
 CREATE INDEX index_performers_scenes_on_performer_id on performers_scenes (performer_id);
 CREATE INDEX index_scene_markers_tags_on_tag_id on scene_markers_tags (tag_id);
 CREATE INDEX index_scenes_tags_on_tag_id on scenes_tags (tag_id);
-CREATE INDEX index_movies_scenes_on_movie_id on "groups_scenes" ("group_id");
+CREATE INDEX index_movies_scenes_on_movie_id on groups_scenes (group_id);
 CREATE INDEX index_performers_images_on_performer_id on performers_images (performer_id);
 CREATE INDEX index_images_tags_on_tag_id on images_tags (tag_id);
 CREATE INDEX index_scenes_galleries_on_gallery_id on scenes_galleries (gallery_id);

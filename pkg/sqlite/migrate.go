@@ -103,7 +103,7 @@ func (m *Migrator) _getMigratePostgres() (*migrate.Migrate, error) {
 	return migrate.NewWithInstance(
 		"iofs",
 		migrations,
-		m.db.dbString,
+		"postgres",
 		driver,
 	)
 }

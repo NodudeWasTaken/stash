@@ -915,7 +915,7 @@ func (qb *SceneStore) makeQuery(ctx context.Context, sceneFilter *models.SceneFi
 	}
 
 	query := sceneRepository.newQuery()
-	distinctIDs(&query, sceneTable)
+	selectIDs(&query, sceneTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
 		query.addJoins(
@@ -1195,7 +1195,7 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 	}
 
 	// Whatever the sorting, always use title/id as a final sort
-	query.sortAndPagination += ", COALESCE(scenes.title, scenes.id) COLLATE NATURAL_CI ASC"
+	query.sortAndPagination += ", COALESCE(scenes.title, cast(scenes.id as text)) COLLATE NATURAL_CI ASC"
 
 	return nil
 }

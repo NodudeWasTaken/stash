@@ -849,7 +849,7 @@ func (qb *FileStore) Query(ctx context.Context, options models.FileQueryOptions)
 	query := qb.newQuery()
 	query.join(folderTable, "", "files.parent_folder_id = folders.id")
 
-	distinctIDs(&query, fileTable)
+	selectIDs(&query, fileTable)
 
 	if q := findFilter.Q; q != nil && *q != "" {
 		filepathColumn := "folders.path || '" + string(filepath.Separator) + "' || files.basename"
