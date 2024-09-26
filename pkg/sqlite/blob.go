@@ -125,7 +125,7 @@ func (qb *BlobStore) Write(ctx context.Context, data []byte) (string, error) {
 
 func (qb *BlobStore) write(ctx context.Context, checksum string, data []byte) error {
 	table := qb.table()
-	q := dialect.Insert(table).Prepared(true).Rows(blobRow{
+	q := dialect.Insert(table).Rows(blobRow{
 		Checksum: checksum,
 		Blob:     data,
 	}).OnConflict(goqu.DoNothing())
@@ -140,7 +140,7 @@ func (qb *BlobStore) write(ctx context.Context, checksum string, data []byte) er
 
 func (qb *BlobStore) update(ctx context.Context, checksum string, data []byte) error {
 	table := qb.table()
-	q := dialect.Update(table).Prepared(true).Set(goqu.Record{
+	q := dialect.Update(table).Set(goqu.Record{
 		"blob": data,
 	}).Where(goqu.C(blobChecksumColumn).Eq(checksum))
 

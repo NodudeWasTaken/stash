@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/doug-martin/goqu/v9"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/stashapp/stash/pkg/fsutil"
@@ -154,12 +156,18 @@ func (db *Database) OpenPostgres(dbConnector string) error {
 	db.dbType = PostgresBackend
 	db.dbString = dbConnector
 
+	dialect = goqu.Dialect("postgres")
+	goqu.SetDefaultPrepared(false)
+
 	return db.OpenGeneric()
 }
 
 func (db *Database) OpenSqlite(dbPath string) error {
 	db.dbType = SqliteBackend
 	db.dbPath = dbPath
+
+	dialect = goqu.Dialect("sqlite3")
+	goqu.SetDefaultPrepared(true)
 
 	return db.OpenGeneric()
 }
@@ -279,7 +287,14 @@ func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB,
 		conn, err = sqlx.Open(sqlite3Driver, url)
 	}
 	if db.dbType == PostgresBackend {
-		conn, err = sqlx.Connect("postgres", db.dbString)
+		var pool *pgxpool.Pool
+
+		pool, err = pgxpool.New(context.Background(), db.dbString)
+		if err != nil {
+			return nil, err
+		}
+
+		conn = sqlx.NewDb(stdlib.OpenDBFromPool(pool), "postgres")
 	}
 
 	if err != nil {
@@ -290,14 +305,26 @@ func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB,
 }
 
 func (db *Database) initialise() error {
-	if err := db.openReadDB(); err != nil {
+	/*if err := db.openReadDB(); err != nil {
 		return fmt.Errorf("opening read database: %w", err)
 	}
 	if err := db.openWriteDB(); err != nil {
 		return fmt.Errorf("opening write database: %w", err)
-	}
+	}*/
 
-	return nil
+	const (
+		disableForeignKeys = false
+		writable           = true
+	)
+
+	var err error
+	db.writeDB, err = db.open(disableForeignKeys, writable)
+	db.writeDB.SetMaxOpenConns(maxReadConnections)
+	db.writeDB.SetMaxIdleConns(maxReadConnections)
+	db.writeDB.SetConnMaxIdleTime(dbConnTimeout)
+	db.readDB = db.writeDB
+
+	return err
 }
 
 func (db *Database) openReadDB() error {
