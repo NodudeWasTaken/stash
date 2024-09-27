@@ -195,7 +195,7 @@ func (qb *BlobStore) readSQL(ctx context.Context, querySQL string, args ...inter
 
 	checksum := row.Checksum
 
-	if row.Blob != nil {
+	if row.Blob != nil && len(row.Blob) > 0 {
 		return row.Blob, checksum, nil
 	}
 

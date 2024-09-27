@@ -824,7 +824,7 @@ func (t *relatedFilesTable) setPrimary(ctx context.Context, id int, fileID model
 	table := t.table.table
 
 	q := dialect.Update(table).Set(goqu.Record{
-		"primary": 0,
+		"primary": false,
 	}).Where(t.idColumn.Eq(id), table.Col(fileIDColumn).Neq(fileID))
 
 	if _, err := exec(ctx, q); err != nil {
@@ -832,7 +832,7 @@ func (t *relatedFilesTable) setPrimary(ctx context.Context, id int, fileID model
 	}
 
 	q = dialect.Update(table).Set(goqu.Record{
-		"primary": 1,
+		"primary": true,
 	}).Where(t.idColumn.Eq(id), table.Col(fileIDColumn).Eq(fileID))
 
 	if _, err := exec(ctx, q); err != nil {

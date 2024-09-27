@@ -320,25 +320,18 @@ func (db *Database) initialise() error {
 		if err := db.openWriteDB(); err != nil {
 			return fmt.Errorf("opening write database: %w", err)
 		}
-	} else {
-		// TODO: .
-		var err error
-
+	}
+	var err error
+	if db.dbType == PostgresBackend {
 		const (
 			disableForeignKeys = false
 			writable           = true
 		)
-
-		db.writeDB, err = db.open(disableForeignKeys, writable)
-		db.writeDB.SetMaxOpenConns(maxReadConnections)
-		db.writeDB.SetMaxIdleConns(maxReadConnections)
-		db.writeDB.SetConnMaxIdleTime(dbConnTimeout)
-		db.readDB = db.writeDB
-
-		return err
+		db.readDB, err = db.open(disableForeignKeys, writable)
+		db.writeDB = db.readDB
 	}
 
-	return nil
+	return err
 }
 
 func (db *Database) openReadDB() error {
