@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
+	"github.com/doug-martin/goqu/v9/dialect/sqlite3"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
@@ -161,11 +162,17 @@ func (db *Database) OpenPostgres(dbConnector string) error {
 	return db.OpenGeneric()
 }
 
+func RegisterSqliteDialect() {
+	opts := sqlite3.DialectOptions()
+	opts.SupportsReturn = true
+	goqu.RegisterDialect("sqlite3new", opts)
+}
+
 func (db *Database) OpenSqlite(dbPath string) error {
 	db.dbType = SqliteBackend
 	db.dbPath = dbPath
 
-	dialect = goqu.Dialect("sqlite3")
+	dialect = goqu.Dialect("sqlite3new")
 
 	return db.OpenGeneric()
 }

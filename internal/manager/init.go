@@ -235,6 +235,7 @@ func (s *Manager) postInit(ctx context.Context) error {
 
 		var err error
 		if dbType == sqlite.SqliteBackend {
+			sqlite.RegisterSqliteDialect()
 			err = s.Database.OpenSqlite(s.Config.GetDatabasePath())
 		} else if dbType == sqlite.PostgresBackend {
 			err = s.Database.OpenPostgres(s.Config.GetDatabaseConnectionString())
