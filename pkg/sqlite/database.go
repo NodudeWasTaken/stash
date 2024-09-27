@@ -289,6 +289,7 @@ func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB,
 	if db.dbType == PostgresBackend {
 		var pool *pgxpool.Pool
 
+		// TODO: disableForeignKeys, writable
 		pool, err = pgxpool.New(context.Background(), db.dbString)
 		if err != nil {
 			return nil, err
@@ -305,27 +306,32 @@ func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB,
 }
 
 func (db *Database) initialise() error {
-	/*if err := db.openReadDB(); err != nil {
-		return fmt.Errorf("opening read database: %w", err)
+	if db.dbType == SqliteBackend {
+		if err := db.openReadDB(); err != nil {
+			return fmt.Errorf("opening read database: %w", err)
+		}
+		if err := db.openWriteDB(); err != nil {
+			return fmt.Errorf("opening write database: %w", err)
+		}
+	} else {
+		// TODO: .
+		var err error
+
+		const (
+			disableForeignKeys = false
+			writable           = true
+		)
+
+		db.writeDB, err = db.open(disableForeignKeys, writable)
+		db.writeDB.SetMaxOpenConns(maxReadConnections)
+		db.writeDB.SetMaxIdleConns(maxReadConnections)
+		db.writeDB.SetConnMaxIdleTime(dbConnTimeout)
+		db.readDB = db.writeDB
+
+		return err
 	}
-	if err := db.openWriteDB(); err != nil {
-		return fmt.Errorf("opening write database: %w", err)
-	}*/
 
-	// TODO: .
-	const (
-		disableForeignKeys = false
-		writable           = true
-	)
-
-	var err error
-	db.writeDB, err = db.open(disableForeignKeys, writable)
-	db.writeDB.SetMaxOpenConns(maxReadConnections)
-	db.writeDB.SetMaxIdleConns(maxReadConnections)
-	db.writeDB.SetConnMaxIdleTime(dbConnTimeout)
-	db.readDB = db.writeDB
-
-	return err
+	return nil
 }
 
 func (db *Database) openReadDB() error {
