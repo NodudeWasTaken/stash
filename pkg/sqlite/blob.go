@@ -436,12 +436,22 @@ func (qb *blobJoinQueryBuilder) DestroyImage(ctx context.Context, id int, blobCo
 }
 
 func (qb *blobJoinQueryBuilder) HasImage(ctx context.Context, id int, blobCol string) (bool, error) {
-	stmt := utils.StrFormat("SELECT COUNT(*) as count FROM (SELECT {joinCol} FROM {joinTable} WHERE id = $1 AND {joinCol} IS NOT NULL LIMIT 1) AS subquery", utils.StrFormatMap{
-		"joinTable": qb.joinTable,
-		"joinCol":   blobCol,
-	})
+	ds := dialect.From(goqu.T(qb.joinTable)).
+		Select(goqu.C(blobCol)).
+		Where(
+			goqu.C("id").Eq(id),
+			goqu.C(blobCol).IsNotNull(),
+		).
+		Limit(1)
 
-	c, err := qb.repository.runCountQuery(ctx, stmt, []interface{}{id})
+	countDs := goqu.From(ds.As("subquery")).Select(goqu.COUNT("*").As("count"))
+
+	sql, params, err := countDs.ToSQL()
+	if err != nil {
+		return false, err
+	}
+
+	c, err := qb.repository.runCountQuery(ctx, sql, params)
 	if err != nil {
 		return false, err
 	}
