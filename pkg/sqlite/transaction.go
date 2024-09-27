@@ -30,7 +30,7 @@ func (db *Database) WithDatabase(ctx context.Context) (context.Context, error) {
 }
 
 func (db *Database) Begin(ctx context.Context, writable bool) (context.Context, error) {
-	if tx, _ := getTx(ctx); tx != nil {
+	if tx, _ := getTx(ctx); tx != nil && db.dbType == SqliteBackend {
 		// log the stack trace so we can see
 		logger.Error(string(debug.Stack()))
 

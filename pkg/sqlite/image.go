@@ -210,7 +210,7 @@ func (qb *ImageStore) selectDataset() *goqu.SelectDataset {
 		imagesFilesJoinTable,
 		goqu.On(
 			imagesFilesJoinTable.Col(imageIDColumn).Eq(table.Col(idColumn)),
-			imagesFilesJoinTable.Col("primary").Eq(1),
+			imagesFilesJoinTable.Col("primary").IsTrue(),
 		),
 	).LeftJoin(
 		files,

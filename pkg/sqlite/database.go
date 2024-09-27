@@ -157,7 +157,6 @@ func (db *Database) OpenPostgres(dbConnector string) error {
 	db.dbString = dbConnector
 
 	dialect = goqu.Dialect("postgres")
-	goqu.SetDefaultPrepared(false)
 
 	return db.OpenGeneric()
 }
@@ -167,7 +166,6 @@ func (db *Database) OpenSqlite(dbPath string) error {
 	db.dbPath = dbPath
 
 	dialect = goqu.Dialect("sqlite3")
-	goqu.SetDefaultPrepared(true)
 
 	return db.OpenGeneric()
 }
@@ -177,6 +175,8 @@ func (db *Database) OpenSqlite(dbPath string) error {
 // necessary migrations must be run separately using RunMigrations.
 // Returns true if the database is new.
 func (db *Database) OpenGeneric() error {
+	goqu.SetDefaultPrepared(false)
+
 	databaseSchemaVersion, err := db.getDatabaseSchemaVersion()
 	if err != nil {
 		return fmt.Errorf("getting database schema version: %w", err)
@@ -312,6 +312,7 @@ func (db *Database) initialise() error {
 		return fmt.Errorf("opening write database: %w", err)
 	}*/
 
+	// TODO: .
 	const (
 		disableForeignKeys = false
 		writable           = true
@@ -508,12 +509,12 @@ func (db *Database) Analyze(ctx context.Context) error {
 	return err
 }
 
-func (db *Database) ExecSQL(ctx context.Context, query string, args []interface{}) (*int64, *int64, error) {
+func (db *Database) ExecSQL(ctx context.Context, query string, args []interface{}) (*int64, error) {
 	wrapper := dbWrapperType{}
 
 	result, err := wrapper.Exec(ctx, query, args...)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	var rowsAffected *int64
@@ -522,13 +523,7 @@ func (db *Database) ExecSQL(ctx context.Context, query string, args []interface{
 		rowsAffected = &ra
 	}
 
-	var lastInsertId *int64
-	li, err := result.LastInsertId()
-	if err == nil {
-		lastInsertId = &li
-	}
-
-	return rowsAffected, lastInsertId, nil
+	return rowsAffected, nil
 }
 
 func (db *Database) QuerySQL(ctx context.Context, query string, args []interface{}) ([]string, [][]interface{}, error) {

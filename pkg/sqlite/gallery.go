@@ -209,7 +209,7 @@ func (qb *GalleryStore) selectDataset() *goqu.SelectDataset {
 		galleriesFilesJoinTable,
 		goqu.On(
 			galleriesFilesJoinTable.Col(galleryIDColumn).Eq(table.Col(idColumn)),
-			galleriesFilesJoinTable.Col("primary").Eq(1),
+			galleriesFilesJoinTable.Col("primary").IsTrue(),
 		),
 	).LeftJoin(
 		files,

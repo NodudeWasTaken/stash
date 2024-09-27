@@ -360,12 +360,12 @@ func (qb *GroupStore) getMany(ctx context.Context, q *goqu.SelectDataset) ([]*mo
 }
 
 func (qb *GroupStore) FindByName(ctx context.Context, name string, nocase bool) (*models.Group, error) {
-	// query := "SELECT * FROM groups WHERE name = ?"
+	// query := "SELECT * FROM groups WHERE name = $1"
 	// if nocase {
 	// 	query += " COLLATE NOCASE"
 	// }
 	// query += " LIMIT 1"
-	where := "name = ?"
+	where := "name = $1"
 	if nocase {
 		where += " COLLATE NOCASE"
 	}
@@ -593,7 +593,7 @@ func (qb *GroupStore) FindByPerformerID(ctx context.Context, performerID int) ([
 FROM groups
 INNER JOIN groups_scenes ON groups.id = groups_scenes.group_id
 INNER JOIN performers_scenes ON performers_scenes.scene_id = groups_scenes.scene_id
-WHERE performers_scenes.performer_id = ?
+WHERE performers_scenes.performer_id = $1
 `
 	args := []interface{}{performerID}
 	return qb.queryGroups(ctx, query, args)
@@ -603,7 +603,7 @@ func (qb *GroupStore) CountByPerformerID(ctx context.Context, performerID int) (
 	query := `SELECT COUNT(DISTINCT groups_scenes.group_id) AS count
 FROM groups_scenes
 INNER JOIN performers_scenes ON performers_scenes.scene_id = groups_scenes.scene_id
-WHERE performers_scenes.performer_id = ?
+WHERE performers_scenes.performer_id = $1
 `
 	args := []interface{}{performerID}
 	return groupRepository.runCountQuery(ctx, query, args)
@@ -612,7 +612,7 @@ WHERE performers_scenes.performer_id = ?
 func (qb *GroupStore) FindByStudioID(ctx context.Context, studioID int) ([]*models.Group, error) {
 	query := `SELECT groups.*
 FROM groups
-WHERE groups.studio_id = ?
+WHERE groups.studio_id = $1
 `
 	args := []interface{}{studioID}
 	return qb.queryGroups(ctx, query, args)
@@ -621,7 +621,7 @@ WHERE groups.studio_id = ?
 func (qb *GroupStore) CountByStudioID(ctx context.Context, studioID int) (int, error) {
 	query := `SELECT COUNT(1) AS count
 FROM groups
-WHERE groups.studio_id = ?
+WHERE groups.studio_id = $1
 `
 	args := []interface{}{studioID}
 	return groupRepository.runCountQuery(ctx, query, args)

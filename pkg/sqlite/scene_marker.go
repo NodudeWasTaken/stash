@@ -19,7 +19,7 @@ const sceneMarkerTable = "scene_markers"
 const countSceneMarkersForTagQuery = `
 SELECT scene_markers.id FROM scene_markers
 LEFT JOIN scene_markers_tags as tags_join on tags_join.scene_marker_id = scene_markers.id
-WHERE tags_join.tag_id = ? OR scene_markers.primary_tag_id = ?
+WHERE tags_join.tag_id = $1 OR scene_markers.primary_tag_id = $2
 GROUP BY scene_markers.id
 `
 
@@ -250,7 +250,7 @@ func (qb *SceneMarkerStore) getMany(ctx context.Context, q *goqu.SelectDataset) 
 func (qb *SceneMarkerStore) FindBySceneID(ctx context.Context, sceneID int) ([]*models.SceneMarker, error) {
 	query := `
 		SELECT scene_markers.* FROM scene_markers
-		WHERE scene_markers.scene_id = ?
+		WHERE scene_markers.scene_id = $1
 		GROUP BY scene_markers.id
 		ORDER BY scene_markers.seconds ASC
 	`

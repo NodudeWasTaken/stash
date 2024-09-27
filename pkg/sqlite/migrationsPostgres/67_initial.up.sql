@@ -28,7 +28,7 @@ CREATE TABLE files (
   basename varchar(255) NOT NULL,
   zip_file_id integer,
   parent_folder_id integer not null,
-  size integer NOT NULL,
+  size bigint NOT NULL,
   mod_time timestamp not null,
   created_at timestamp not null,
   updated_at timestamp not null,

@@ -355,7 +355,7 @@ type blobJoinQueryBuilder struct {
 func (qb *blobJoinQueryBuilder) GetImage(ctx context.Context, id int, blobCol string) ([]byte, error) {
 	sqlQuery := utils.StrFormat(`
 SELECT blobs.checksum, blobs.blob FROM {joinTable} INNER JOIN blobs ON {joinTable}.{joinCol} = blobs.checksum
-WHERE {joinTable}.id = ?
+WHERE {joinTable}.id = $1
 `, utils.StrFormatMap{
 		"joinTable": qb.joinTable,
 		"joinCol":   blobCol,
@@ -380,7 +380,7 @@ func (qb *blobJoinQueryBuilder) UpdateImage(ctx context.Context, id int, blobCol
 		return err
 	}
 
-	sqlQuery := fmt.Sprintf("UPDATE %s SET %s = ? WHERE id = ?", qb.joinTable, blobCol)
+	sqlQuery := fmt.Sprintf("UPDATE %s SET %s = $1 WHERE id = $2", qb.joinTable, blobCol)
 	if _, err := dbWrapper.Exec(ctx, sqlQuery, checksum, id); err != nil {
 		return err
 	}
@@ -397,7 +397,7 @@ func (qb *blobJoinQueryBuilder) UpdateImage(ctx context.Context, id int, blobCol
 
 func (qb *blobJoinQueryBuilder) getChecksum(ctx context.Context, id int, blobCol string) (*string, error) {
 	sqlQuery := utils.StrFormat(`
-SELECT {joinTable}.{joinCol} FROM {joinTable} WHERE {joinTable}.id = ?
+SELECT {joinTable}.{joinCol} FROM {joinTable} WHERE {joinTable}.id = $1
 `, utils.StrFormatMap{
 		"joinTable": qb.joinTable,
 		"joinCol":   blobCol,
@@ -427,7 +427,7 @@ func (qb *blobJoinQueryBuilder) DestroyImage(ctx context.Context, id int, blobCo
 		return nil
 	}
 
-	updateQuery := fmt.Sprintf("UPDATE %s SET %s = NULL WHERE id = ?", qb.joinTable, blobCol)
+	updateQuery := fmt.Sprintf("UPDATE %s SET %s = NULL WHERE id = $1", qb.joinTable, blobCol)
 	if _, err = dbWrapper.Exec(ctx, updateQuery, id); err != nil {
 		return err
 	}
@@ -436,7 +436,7 @@ func (qb *blobJoinQueryBuilder) DestroyImage(ctx context.Context, id int, blobCo
 }
 
 func (qb *blobJoinQueryBuilder) HasImage(ctx context.Context, id int, blobCol string) (bool, error) {
-	stmt := utils.StrFormat("SELECT COUNT(*) as count FROM (SELECT {joinCol} FROM {joinTable} WHERE id = ? AND {joinCol} IS NOT NULL LIMIT 1)", utils.StrFormatMap{
+	stmt := utils.StrFormat("SELECT COUNT(*) as count FROM (SELECT {joinCol} FROM {joinTable} WHERE id = $1 AND {joinCol} IS NOT NULL LIMIT 1) AS subquery", utils.StrFormatMap{
 		"joinTable": qb.joinTable,
 		"joinCol":   blobCol,
 	})

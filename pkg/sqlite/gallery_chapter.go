@@ -224,7 +224,7 @@ func (qb *GalleryChapterStore) getMany(ctx context.Context, q *goqu.SelectDatase
 func (qb *GalleryChapterStore) FindByGalleryID(ctx context.Context, galleryID int) ([]*models.GalleryChapter, error) {
 	query := `
 		SELECT galleries_chapters.* FROM galleries_chapters
-		WHERE galleries_chapters.gallery_id = ?
+		WHERE galleries_chapters.gallery_id = $1
 		GROUP BY galleries_chapters.id
 		ORDER BY galleries_chapters.image_index ASC
 	`

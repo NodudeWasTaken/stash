@@ -277,7 +277,7 @@ func (qb *TagStore) Destroy(ctx context.Context, id int) error {
 	}
 
 	// cannot unset primary_tag_id in scene_markers because it is not nullable
-	countQuery := "SELECT COUNT(*) as count FROM scene_markers where primary_tag_id = ?"
+	countQuery := "SELECT COUNT(*) as count FROM scene_markers where primary_tag_id = $1"
 	args := []interface{}{id}
 	primaryMarkers, err := tagRepository.runCountQuery(ctx, countQuery, args)
 	if err != nil {
@@ -380,7 +380,7 @@ func (qb *TagStore) FindBySceneID(ctx context.Context, sceneID int) ([]*models.T
 	query := `
 		SELECT tags.* FROM tags
 		LEFT JOIN scenes_tags as scenes_join on scenes_join.tag_id = tags.id
-		WHERE scenes_join.scene_id = ?
+		WHERE scenes_join.scene_id = $1
 		GROUP BY tags.id
 	`
 	query += qb.getDefaultTagSort()
@@ -392,7 +392,7 @@ func (qb *TagStore) FindByPerformerID(ctx context.Context, performerID int) ([]*
 	query := `
 		SELECT tags.* FROM tags
 		LEFT JOIN performers_tags as performers_join on performers_join.tag_id = tags.id
-		WHERE performers_join.performer_id = ?
+		WHERE performers_join.performer_id = $1
 		GROUP BY tags.id
 	`
 	query += qb.getDefaultTagSort()
@@ -404,7 +404,7 @@ func (qb *TagStore) FindByImageID(ctx context.Context, imageID int) ([]*models.T
 	query := `
 		SELECT tags.* FROM tags
 		LEFT JOIN images_tags as images_join on images_join.tag_id = tags.id
-		WHERE images_join.image_id = ?
+		WHERE images_join.image_id = $1
 		GROUP BY tags.id
 	`
 	query += qb.getDefaultTagSort()
@@ -416,7 +416,7 @@ func (qb *TagStore) FindByGalleryID(ctx context.Context, galleryID int) ([]*mode
 	query := `
 		SELECT tags.* FROM tags
 		LEFT JOIN galleries_tags as galleries_join on galleries_join.tag_id = tags.id
-		WHERE galleries_join.gallery_id = ?
+		WHERE galleries_join.gallery_id = $1
 		GROUP BY tags.id
 	`
 	query += qb.getDefaultTagSort()
@@ -428,7 +428,7 @@ func (qb *TagStore) FindByGroupID(ctx context.Context, groupID int) ([]*models.T
 	query := `
 		SELECT tags.* FROM tags
 		LEFT JOIN groups_tags as groups_join on groups_join.tag_id = tags.id
-		WHERE groups_join.group_id = ?
+		WHERE groups_join.group_id = $1
 		GROUP BY tags.id
 	`
 	query += qb.getDefaultTagSort()
@@ -440,7 +440,7 @@ func (qb *TagStore) FindBySceneMarkerID(ctx context.Context, sceneMarkerID int) 
 	query := `
 		SELECT tags.* FROM tags
 		LEFT JOIN scene_markers_tags as scene_markers_join on scene_markers_join.tag_id = tags.id
-		WHERE scene_markers_join.scene_marker_id = ?
+		WHERE scene_markers_join.scene_marker_id = $11
 		GROUP BY tags.id
 	`
 	query += qb.getDefaultTagSort()
@@ -452,7 +452,7 @@ func (qb *TagStore) FindByStudioID(ctx context.Context, studioID int) ([]*models
 	query := `
 		SELECT tags.* FROM tags
 		LEFT JOIN studios_tags as studios_join on studios_join.tag_id = tags.id
-		WHERE studios_join.studio_id = ?
+		WHERE studios_join.studio_id = $1
 		GROUP BY tags.id
 	`
 	query += qb.getDefaultTagSort()
@@ -461,12 +461,12 @@ func (qb *TagStore) FindByStudioID(ctx context.Context, studioID int) ([]*models
 }
 
 func (qb *TagStore) FindByName(ctx context.Context, name string, nocase bool) (*models.Tag, error) {
-	// query := "SELECT * FROM tags WHERE name = ?"
+	// query := "SELECT * FROM tags WHERE name = $1"
 	// if nocase {
 	// 	query += " COLLATE NOCASE"
 	// }
 	// query += " LIMIT 1"
-	where := "name = ?"
+	where := "name = $1"
 	if nocase {
 		where += " COLLATE NOCASE"
 	}
@@ -517,7 +517,7 @@ func (qb *TagStore) FindByParentTagID(ctx context.Context, parentID int) ([]*mod
 	query := `
 		SELECT tags.* FROM tags
 		INNER JOIN tags_relations ON tags_relations.child_id = tags.id
-		WHERE tags_relations.parent_id = ?
+		WHERE tags_relations.parent_id = $1
 	`
 	query += qb.getDefaultTagSort()
 	args := []interface{}{parentID}
@@ -528,7 +528,7 @@ func (qb *TagStore) FindByChildTagID(ctx context.Context, parentID int) ([]*mode
 	query := `
 		SELECT tags.* FROM tags
 		INNER JOIN tags_relations ON tags_relations.parent_id = tags.id
-		WHERE tags_relations.child_id = ?
+		WHERE tags_relations.child_id = $1
 	`
 	query += qb.getDefaultTagSort()
 	args := []interface{}{parentID}
@@ -789,9 +789,9 @@ func (qb *TagStore) Merge(ctx context.Context, source []int, destination int) er
 	args = append(args, destination)
 	for table, idColumn := range tagTables {
 		_, err := dbWrapper.Exec(ctx, `UPDATE OR IGNORE `+table+`
-SET tag_id = ?
+SET tag_id = $1
 WHERE tag_id IN `+inBinding+`
-AND NOT EXISTS(SELECT 1 FROM `+table+` o WHERE o.`+idColumn+` = `+table+`.`+idColumn+` AND o.tag_id = ?)`,
+AND NOT EXISTS(SELECT 1 FROM `+table+` o WHERE o.`+idColumn+` = `+table+`.`+idColumn+` AND o.tag_id = $2)`,
 			args...,
 		)
 		if err != nil {
@@ -804,7 +804,7 @@ AND NOT EXISTS(SELECT 1 FROM `+table+` o WHERE o.`+idColumn+` = `+table+`.`+idCo
 		}
 	}
 
-	_, err := dbWrapper.Exec(ctx, "UPDATE "+sceneMarkerTable+" SET primary_tag_id = ? WHERE primary_tag_id IN "+inBinding, args...)
+	_, err := dbWrapper.Exec(ctx, "UPDATE "+sceneMarkerTable+" SET primary_tag_id = $1 WHERE primary_tag_id IN "+inBinding, args...)
 	if err != nil {
 		return err
 	}
@@ -814,7 +814,7 @@ AND NOT EXISTS(SELECT 1 FROM `+table+` o WHERE o.`+idColumn+` = `+table+`.`+idCo
 		return err
 	}
 
-	_, err = dbWrapper.Exec(ctx, "UPDATE "+tagAliasesTable+" SET tag_id = ? WHERE tag_id IN "+inBinding, args...)
+	_, err = dbWrapper.Exec(ctx, "UPDATE "+tagAliasesTable+" SET tag_id = $1 WHERE tag_id IN "+inBinding, args...)
 	if err != nil {
 		return err
 	}
@@ -830,7 +830,7 @@ AND NOT EXISTS(SELECT 1 FROM `+table+` o WHERE o.`+idColumn+` = `+table+`.`+idCo
 }
 
 func (qb *TagStore) UpdateParentTags(ctx context.Context, tagID int, parentIDs []int) error {
-	if _, err := dbWrapper.Exec(ctx, "DELETE FROM tags_relations WHERE child_id = ?", tagID); err != nil {
+	if _, err := dbWrapper.Exec(ctx, "DELETE FROM tags_relations WHERE child_id = $1", tagID); err != nil {
 		return err
 	}
 
@@ -852,7 +852,7 @@ func (qb *TagStore) UpdateParentTags(ctx context.Context, tagID int, parentIDs [
 }
 
 func (qb *TagStore) UpdateChildTags(ctx context.Context, tagID int, childIDs []int) error {
-	if _, err := dbWrapper.Exec(ctx, "DELETE FROM tags_relations WHERE parent_id = ?", tagID); err != nil {
+	if _, err := dbWrapper.Exec(ctx, "DELETE FROM tags_relations WHERE parent_id = $1", tagID); err != nil {
 		return err
 	}
 
@@ -880,7 +880,7 @@ func (qb *TagStore) FindAllAncestors(ctx context.Context, tagID int, excludeIDs 
 
 	query := `WITH RECURSIVE
 parents AS (
-	SELECT t.id AS parent_id, t.id AS child_id, t.name as path FROM tags t WHERE t.id = ?
+	SELECT t.id AS parent_id, t.id AS child_id, t.name as path FROM tags t WHERE t.id = $1
 	UNION
 	SELECT tr.parent_id, tr.child_id, t.name || '->' || p.path as path FROM tags_relations tr INNER JOIN parents p ON p.parent_id = tr.child_id JOIN tags t ON t.id = tr.parent_id WHERE tr.parent_id NOT IN` + inBinding + `
 )
@@ -904,7 +904,7 @@ func (qb *TagStore) FindAllDescendants(ctx context.Context, tagID int, excludeID
 
 	query := `WITH RECURSIVE
 children AS (
-	SELECT t.id AS parent_id, t.id AS child_id, t.name as path FROM tags t WHERE t.id = ?
+	SELECT t.id AS parent_id, t.id AS child_id, t.name as path FROM tags t WHERE t.id = $1
 	UNION
 	SELECT tr.parent_id, tr.child_id, c.path || '->' || t.name as path FROM tags_relations tr INNER JOIN children c ON c.child_id = tr.parent_id JOIN tags t ON t.id = tr.child_id WHERE tr.child_id NOT IN` + inBinding + `
 )

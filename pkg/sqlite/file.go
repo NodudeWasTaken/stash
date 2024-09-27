@@ -764,7 +764,7 @@ func (qb *FileStore) IsPrimary(ctx context.Context, fileID models.FileID) (bool,
 	for _, t := range joinTables {
 		qq := dialect.From(t).Select(t.Col(fileIDColumn)).Where(
 			t.Col(fileIDColumn).Eq(fileID),
-			t.Col("primary").Eq(1),
+			t.Col("primary").IsTrue(),
 		)
 
 		if sq == nil {

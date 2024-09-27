@@ -382,7 +382,7 @@ func (qb *StudioStore) findBySubquery(ctx context.Context, sq *goqu.SelectDatase
 }
 
 func (qb *StudioStore) FindChildren(ctx context.Context, id int) ([]*models.Studio, error) {
-	// SELECT studios.* FROM studios WHERE studios.parent_id = ?
+	// SELECT studios.* FROM studios WHERE studios.parent_id = $1
 	table := qb.table()
 	sq := qb.selectDataset().Where(table.Col(studioParentIDColumn).Eq(id))
 	ret, err := qb.getMany(ctx, sq)
@@ -395,7 +395,7 @@ func (qb *StudioStore) FindChildren(ctx context.Context, id int) ([]*models.Stud
 }
 
 func (qb *StudioStore) FindBySceneID(ctx context.Context, sceneID int) (*models.Studio, error) {
-	// SELECT studios.* FROM studios JOIN scenes ON studios.id = scenes.studio_id WHERE scenes.id = ? LIMIT 1
+	// SELECT studios.* FROM studios JOIN scenes ON studios.id = scenes.studio_id WHERE scenes.id = $1 LIMIT 1
 	table := qb.table()
 	scenes := sceneTableMgr.table
 	sq := qb.selectDataset().Join(
@@ -413,12 +413,12 @@ func (qb *StudioStore) FindBySceneID(ctx context.Context, sceneID int) (*models.
 }
 
 func (qb *StudioStore) FindByName(ctx context.Context, name string, nocase bool) (*models.Studio, error) {
-	// query := "SELECT * FROM studios WHERE name = ?"
+	// query := "SELECT * FROM studios WHERE name = $1"
 	// if nocase {
 	// 	query += " COLLATE NOCASE"
 	// }
 	// query += " LIMIT 1"
-	where := "name = ?"
+	where := "name = $1"
 	if nocase {
 		where += " COLLATE NOCASE"
 	}
@@ -501,7 +501,7 @@ func (qb *StudioStore) QueryForAutoTag(ctx context.Context, words []string) ([]*
 
 	sq = sq.Where(
 		goqu.Or(whereClauses...),
-		table.Col("ignore_auto_tag").Eq(0),
+		table.Col("ignore_auto_tag").IsFalse(),
 	)
 
 	ret, err := qb.findBySubquery(ctx, sq)

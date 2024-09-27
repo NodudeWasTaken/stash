@@ -53,8 +53,8 @@ FROM (
 	INNER JOIN files_fingerprints ON (scenes_files.file_id = files_fingerprints.file_id AND files_fingerprints.type = 'phash')
 	INNER JOIN video_files ON (files.id == video_files.file_id)
 )
-WHERE durationDiff <= ?1
-    OR ?1 < 0   --  Always TRUE if the parameter is negative.
+WHERE durationDiff <= $1
+    OR $1 < 0   --  Always TRUE if the parameter is negative.
                 --  That will disable the durationDiff checking.
 GROUP BY phash
 HAVING COUNT(phash) > 1
@@ -267,7 +267,7 @@ func (qb *SceneStore) selectDataset() *goqu.SelectDataset {
 		scenesFilesJoinTable,
 		goqu.On(
 			scenesFilesJoinTable.Col(sceneIDColumn).Eq(table.Col(idColumn)),
-			scenesFilesJoinTable.Col("primary").Eq(1),
+			scenesFilesJoinTable.Col("primary").IsTrue(),
 		),
 	).LeftJoin(
 		files,
@@ -630,7 +630,7 @@ func (qb *SceneStore) FindByFileID(ctx context.Context, fileID models.FileID) ([
 func (qb *SceneStore) FindByPrimaryFileID(ctx context.Context, fileID models.FileID) ([]*models.Scene, error) {
 	sq := dialect.From(scenesFilesJoinTable).Select(scenesFilesJoinTable.Col(sceneIDColumn)).Where(
 		scenesFilesJoinTable.Col(fileIDColumn).Eq(fileID),
-		scenesFilesJoinTable.Col("primary").Eq(1),
+		scenesFilesJoinTable.Col("primary").IsTrue(),
 	)
 
 	ret, err := qb.findBySubquery(ctx, sq)
