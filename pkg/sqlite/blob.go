@@ -70,8 +70,8 @@ func NewBlobStore(options BlobStoreOptions) *BlobStore {
 }
 
 type blobRow struct {
-	Checksum string `db:"checksum"`
-	Blob     []byte `db:"blob"`
+	Checksum string           `db:"checksum"`
+	Blob     sql.Null[[]byte] `db:"blob"`
 }
 
 func (qb *BlobStore) table() exp.IdentifierExpression {
@@ -124,10 +124,14 @@ func (qb *BlobStore) Write(ctx context.Context, data []byte) (string, error) {
 }
 
 func (qb *BlobStore) write(ctx context.Context, checksum string, data []byte) error {
+	var blobdata sql.Null[[]byte]
+	blobdata.V = data
+	blobdata.Valid = len(data) > 0
+
 	table := qb.table()
 	q := dialect.Insert(table).Rows(blobRow{
 		Checksum: checksum,
-		Blob:     data,
+		Blob:     blobdata,
 	}).OnConflict(goqu.DoNothing())
 
 	_, err := exec(ctx, q)
@@ -195,8 +199,8 @@ func (qb *BlobStore) readSQL(ctx context.Context, querySQL string, args ...inter
 
 	checksum := row.Checksum
 
-	if row.Blob != nil && len(row.Blob) > 0 {
-		return row.Blob, checksum, nil
+	if row.Blob.Valid {
+		return row.Blob.V, checksum, nil
 	}
 
 	// don't use the filesystem if not configured to do so
@@ -265,8 +269,8 @@ func (qb *BlobStore) Read(ctx context.Context, checksum string) ([]byte, error) 
 		}
 	}
 
-	if ret != nil {
-		return ret, nil
+	if ret.Valid {
+		return ret.V, nil
 	}
 
 	// don't use the filesystem if not configured to do so
@@ -280,9 +284,10 @@ func (qb *BlobStore) Read(ctx context.Context, checksum string) ([]byte, error) 
 	}
 }
 
-func (qb *BlobStore) readFromDatabase(ctx context.Context, checksum string) ([]byte, error) {
+func (qb *BlobStore) readFromDatabase(ctx context.Context, checksum string) (sql.Null[[]byte], error) {
 	q := dialect.From(qb.table()).Select(qb.table().All()).Where(qb.tableMgr.byID(checksum))
 
+	var empty sql.Null[[]byte]
 	var row blobRow
 	const single = true
 	if err := queryFunc(ctx, q, single, func(r *sqlx.Rows) error {
@@ -292,7 +297,7 @@ func (qb *BlobStore) readFromDatabase(ctx context.Context, checksum string) ([]b
 
 		return nil
 	}); err != nil {
-		return nil, fmt.Errorf("querying %s: %w", qb.table(), err)
+		return empty, fmt.Errorf("querying %s: %w", qb.table(), err)
 	}
 
 	return row.Blob, nil

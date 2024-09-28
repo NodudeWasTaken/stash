@@ -327,8 +327,12 @@ func (db *Database) initialise() error {
 			disableForeignKeys = false
 			writable           = true
 		)
-		db.readDB, err = db.open(disableForeignKeys, writable)
-		db.writeDB = db.readDB
+		if db.readDB, err = db.open(disableForeignKeys, writable); err != nil {
+			return fmt.Errorf("opening read database: %w", err)
+		}
+		if db.writeDB, err = db.open(disableForeignKeys, writable); err != nil {
+			return fmt.Errorf("opening read database: %w", err)
+		}
 	}
 
 	return err
