@@ -746,7 +746,7 @@ func addHierarchicalConditionClauses(f *filterBuilder, criterion models.Hierarch
 		f.addWhere(fmt.Sprintf("%s.%s IS NOT NULL", table, idColumn))
 	case models.CriterionModifierIncludesAll:
 		f.addWhere(fmt.Sprintf("%s.%s IS NOT NULL", table, idColumn))
-		f.addHaving(fmt.Sprintf("count(distinct %s.%s) IS %d", table, idColumn, len(criterion.Value)))
+		f.addHaving(fmt.Sprintf("count(distinct %s.%s) = %d", table, idColumn, len(criterion.Value)))
 	case models.CriterionModifierExcludes:
 		f.addWhere(fmt.Sprintf("%s.%s IS NULL", table, idColumn))
 	}
@@ -1019,7 +1019,7 @@ INNER JOIN (`+valuesClause+`) t ON t.column2 = pt.tag_id
 		}
 
 		if len(criterion.Excludes) > 0 {
-			valuesClause, err := getHierarchicalValues(ctx, criterion.Excludes, tagTable, "tags_relations", "", "", criterion.Depth, false)
+			valuesClause, err := getHierarchicalValues(ctx, criterion.Excludes, tagTable, "tags_relations", "", "", criterion.Depth, true)
 			if err != nil {
 				f.setError(err)
 				return

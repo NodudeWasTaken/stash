@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/doug-martin/goqu/v9/dialect/postgres"
+	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 
 	"github.com/stashapp/stash/pkg/database"

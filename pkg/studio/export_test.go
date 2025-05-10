@@ -42,7 +42,7 @@ var imageBytes = []byte("imageBytes")
 
 var aliases = []string{"alias"}
 var stashID = models.StashID{
-	StashID:  "StashID",
+	StashID:  getUUID("StashID"),
 	Endpoint: "Endpoint",
 }
 var stashIDs = []models.StashID{

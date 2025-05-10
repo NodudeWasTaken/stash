@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/golang-migrate/migrate/v4"
-	sqlite3mig "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	postgresmig "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jmoiron/sqlx"
 	"github.com/stashapp/stash/pkg/logger"
@@ -70,7 +70,7 @@ func (m *Migrator) getMigrate() (*migrate.Migrate, error) {
 		return nil, err
 	}
 
-	driver, err := sqlite3mig.WithInstance(m.conn.DB, &sqlite3mig.Config{})
+	driver, err := postgresmig.WithInstance(m.conn.DB, &postgresmig.Config{})
 	if err != nil {
 		return nil, err
 	}
