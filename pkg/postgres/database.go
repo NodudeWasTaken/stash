@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -138,7 +139,7 @@ func (db *Database) Open(dbPath string) error {
 	db.lock()
 	defer db.unlock()
 
-	db.dbPath = dbPath
+	db.dbPath, _ = strings.CutPrefix(dbPath, string(database.PostgresBackend)+":")
 
 	databaseSchemaVersion, err := db.getDatabaseSchemaVersion()
 	if err != nil {
