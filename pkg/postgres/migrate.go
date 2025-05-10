@@ -139,11 +139,6 @@ func (m *Migrator) PostMigrate(ctx context.Context) error {
 	// to the migration
 	err = analyze(ctx, m.conn)
 
-	if err == nil {
-		logger.Debug("Flushing WAL")
-		err = flushWAL(ctx, m.conn)
-	}
-
 	if err != nil {
 		return fmt.Errorf("error optimising database: %s", err)
 	}

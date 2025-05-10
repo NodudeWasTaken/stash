@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	// TODO: Test for optimality
 	maxWriteConnections = 5
 	maxReadConnections  = 15
 	// Idle connection timeout, in seconds
@@ -353,7 +354,7 @@ func (db *Database) DatabaseBackupPath(backupDirectoryPath string) string {
 }
 
 func (db *Database) AnonymousDatabasePath(backupDirectoryPath string) string {
-	fn := fmt.Sprintf("%s.anonymous.%d.%s", filepath.Base(db.dbPath), db.schemaVersion, time.Now().Format("20060102_150405"))
+	fn := fmt.Sprintf("%s.anonymous.%d.%s", "postgres", db.schemaVersion, time.Now().Format("20060102_150405"))
 
 	if backupDirectoryPath != "" {
 		return filepath.Join(backupDirectoryPath, fn)
@@ -396,13 +397,6 @@ func (db *Database) Analyze(ctx context.Context) error {
 // analyze runs an ANALYZE on the database to improve query performance.
 func analyze(ctx context.Context, db *sqlx.DB) error {
 	_, err := db.ExecContext(ctx, "ANALYZE")
-	return err
-}
-
-// flushWAL flushes the Write-Ahead Log (WAL) to the main database file.
-// It also truncates the WAL file to 0 bytes.
-func flushWAL(ctx context.Context, db *sqlx.DB) error {
-	_, err := db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")
 	return err
 }
 
