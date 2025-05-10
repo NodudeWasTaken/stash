@@ -404,6 +404,10 @@ func (qb *GalleryStore) Find(ctx context.Context, id int) (*models.Gallery, erro
 func (qb *GalleryStore) FindMany(ctx context.Context, ids []int) ([]*models.Gallery, error) {
 	galleries := make([]*models.Gallery, len(ids))
 
+	if len(ids) == 0 {
+		return galleries, nil
+	}
+
 	if err := batchExec(ids, defaultBatchSize, func(batch []int) error {
 		q := qb.selectDataset().Prepared(true).Where(qb.table().Col(idColumn).In(batch))
 		unsorted, err := qb.getMany(ctx, q)
