@@ -106,9 +106,7 @@ func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error 
 }
 
 func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
-	database := s.Database
-
-	m, err := sqlite.NewMigrator(database)
+	m, err := s.Database.NewMigrator()
 	if err != nil {
 		return
 	}
@@ -128,9 +126,7 @@ func (s *MigrateJob) required() (ret databaseSchemaInfo, err error) {
 }
 
 func (s *MigrateJob) runMigrations(ctx context.Context, progress *job.Progress) error {
-	database := s.Database
-
-	m, err := sqlite.NewMigrator(database)
+	m, err := s.Database.NewMigrator()
 	if err != nil {
 		return err
 	}

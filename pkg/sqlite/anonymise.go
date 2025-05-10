@@ -40,6 +40,10 @@ func NewAnonymiser(db *Database, outPath string) (*Anonymiser, error) {
 	return &Anonymiser{Database: newDB}, nil
 }
 
+func PassAnonymiser(db *Database) (*Anonymiser, error) {
+	return &Anonymiser{Database: db}, nil
+}
+
 func (db *Anonymiser) Anonymise(ctx context.Context) error {
 	if err := func() error {
 		defer db.Close()

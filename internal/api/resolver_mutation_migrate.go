@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"strconv"
 
 	"github.com/stashapp/stash/internal/manager"
@@ -30,7 +31,7 @@ func (r *mutationResolver) MigrateBlobs(ctx context.Context, input MigrateBlobsI
 	mgr := manager.GetInstance()
 	t := &task.MigrateBlobsJob{
 		TxnManager: mgr.Database,
-		BlobStore:  mgr.Database.Blobs,
+		BlobStore:  mgr.Database.Blobs(),
 		Vacuumer:   mgr.Database,
 		DeleteOld:  utils.IsTrue(input.DeleteOld),
 	}
@@ -40,7 +41,7 @@ func (r *mutationResolver) MigrateBlobs(ctx context.Context, input MigrateBlobsI
 }
 
 func (r *mutationResolver) Migrate(ctx context.Context, input manager.MigrateInput) (string, error) {
-	mgr := manager.GetInstance()
+	/*mgr := manager.GetInstance()
 	t := &task.MigrateJob{
 		BackupPath: input.BackupPath,
 		Config:     mgr.Config,
@@ -49,5 +50,6 @@ func (r *mutationResolver) Migrate(ctx context.Context, input manager.MigrateInp
 
 	jobID := mgr.JobManager.Add(ctx, "Migrating database...", t)
 
-	return strconv.Itoa(jobID), nil
+	return strconv.Itoa(jobID), nil*/
+	return "", errors.New("STOP")
 }

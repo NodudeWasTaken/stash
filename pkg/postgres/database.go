@@ -1,4 +1,4 @@
-package sqlite
+package postgres
 
 import (
 	"context"
@@ -6,36 +6,25 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/jmoiron/sqlx"
 
 	"github.com/stashapp/stash/pkg/database"
-	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/logger"
 )
 
 const (
-	maxWriteConnections = 1
-	// Number of database read connections to use
-	// The same value is used for both the maximum and idle limit,
-	// to prevent opening connections on the fly which has a notieable performance penalty.
-	// Fewer connections use less memory, more connections increase performance,
-	// but have diminishing returns.
-	// 10 was found to be a good tradeoff.
-	maxReadConnections = 10
+	maxWriteConnections = 5
+	maxReadConnections  = 15
 	// Idle connection timeout, in seconds
 	// Closes a connection after a period of inactivity, which saves on memory and
 	// causes the sqlite -wal and -shm files to be automatically deleted.
 	dbConnTimeout = 30 * time.Second
-
-	// environment variable to set the cache size
-	cacheSizeEnv = "STASH_SQLITE_CACHE_SIZE"
 )
 
-var appSchemaVersion uint = 72
+var appSchemaVersion uint = 7
 
 //go:embed migrations/*.sql
 var migrationsBox embed.FS
@@ -67,19 +56,19 @@ func (e *MismatchedSchemaVersionError) Error() string {
 }
 
 type storeRepository struct {
-	Blobs          database.BlobStore
-	File           database.FileStore
-	Folder         database.FolderStore
-	Image          database.ImageStore
-	Gallery        database.GalleryStore
-	GalleryChapter database.GalleryChapterStore
-	Scene          database.SceneStore
-	SceneMarker    database.SceneMarkerStore
-	Performer      database.PerformerStore
-	SavedFilter    database.SavedFilterStore
-	Studio         database.StudioStore
-	Tag            database.TagStore
-	Group          database.GroupStore
+	Blobs          *BlobStore
+	File           *FileStore
+	Folder         *FolderStore
+	Image          *ImageStore
+	Gallery        *GalleryStore
+	GalleryChapter *GalleryChapterStore
+	Scene          *SceneStore
+	SceneMarker    *SceneMarkerStore
+	Performer      *PerformerStore
+	SavedFilter    *SavedFilterStore
+	Studio         *StudioStore
+	Tag            *TagStore
+	Group          *GroupStore
 }
 
 type Database struct {
@@ -129,7 +118,7 @@ func NewDatabase() *Database {
 }
 
 func (db *Database) SetBlobStoreOptions(options database.BlobStoreOptions) {
-	db.storeRepository.Blobs = NewBlobStore(options)
+	*db.storeRepository.Blobs = *NewBlobStore(options)
 }
 
 // Ready returns an error if the database is not ready to begin transactions.
@@ -235,28 +224,26 @@ func (db *Database) Close() error {
 	return nil
 }
 
-func (db *Database) open(disableForeignKeys bool, writable bool) (*sqlx.DB, error) {
-	// https://github.com/mattn/go-sqlite3
-	url := "file:" + db.dbPath + "?_journal=WAL&_sync=NORMAL&_busy_timeout=50"
-	if !disableForeignKeys {
-		url += "&_fk=true"
-	}
+func (db *Database) open(disableForeignKeys bool, writable bool) (conn *sqlx.DB, err error) {
+	conn, err = sqlx.Open("pgx", db.dbPath)
 
-	if writable {
-		url += "&_txlock=immediate"
-	} else {
-		url += "&mode=ro"
-	}
-
-	// #5155 - set the cache size if the environment variable is set
-	// default is -2000 which is 2MB
-	if cacheSize := os.Getenv(cacheSizeEnv); cacheSize != "" {
-		url += "&_cache_size=" + cacheSize
-	}
-
-	conn, err := sqlx.Open(sqlite3Driver, url)
 	if err != nil {
 		return nil, fmt.Errorf("db.Open(): %w", err)
+	}
+
+	if disableForeignKeys {
+		_, err = conn.Exec("SET session_replication_role = replica;")
+
+		if err != nil {
+			return nil, fmt.Errorf("conn.Exec(): %w", err)
+		}
+	}
+	if !writable {
+		_, err = conn.Exec("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY;")
+
+		if err != nil {
+			return nil, fmt.Errorf("conn.Exec(): %w", err)
+		}
 	}
 
 	return conn, nil
@@ -299,31 +286,21 @@ func (db *Database) openWriteDB() error {
 	return err
 }
 
-func (db *Database) Remove() error {
-	databasePath := db.dbPath
-	err := db.Close()
+func (db *Database) Remove() (err error) {
+	_, err = db.writeDB.Exec(`
+DO $$
+DECLARE 
+    r record;
+BEGIN
+    FOR r IN SELECT quote_ident(tablename) AS tablename, quote_ident(schemaname) AS schemaname FROM pg_tables WHERE schemaname = 'public'
+    LOOP
+        RAISE INFO 'Dropping table %.%', r.schemaname, r.tablename;
+        EXECUTE format('DROP TABLE IF EXISTS %I.%I CASCADE', r.schemaname, r.tablename);
+    END LOOP;
+END$$;
+`)
 
-	if err != nil {
-		return fmt.Errorf("error closing database: %w", err)
-	}
-
-	err = os.Remove(databasePath)
-	if err != nil {
-		return fmt.Errorf("error removing database: %w", err)
-	}
-
-	// remove the -shm, -wal files ( if they exist )
-	walFiles := []string{databasePath + "-shm", databasePath + "-wal"}
-	for _, wf := range walFiles {
-		if exists, _ := fsutil.FileExists(wf); exists {
-			err = os.Remove(wf)
-			if err != nil {
-				return fmt.Errorf("error removing database: %w", err)
-			}
-		}
-	}
-
-	return nil
+	return err
 }
 
 func (db *Database) Reset() error {
@@ -342,21 +319,7 @@ func (db *Database) Reset() error {
 // Backup the database. If db is nil, then uses the existing database
 // connection.
 func (db *Database) Backup(backupPath string) (err error) {
-	thisDB := db.writeDB
-	if thisDB == nil {
-		thisDB, err = sqlx.Connect(sqlite3Driver, "file:"+db.dbPath+"?_fk=true")
-		if err != nil {
-			return fmt.Errorf("open database %s failed: %w", db.dbPath, err)
-		}
-		defer thisDB.Close()
-	}
-
-	logger.Infof("Backing up database into: %s", backupPath)
-	_, err = thisDB.Exec(`VACUUM INTO "` + backupPath + `"`)
-	if err != nil {
-		return fmt.Errorf("vacuum failed: %w", err)
-	}
-
+	logger.Warn("Postgres backend detected, ignoring Backup request")
 	return nil
 }
 
@@ -371,8 +334,8 @@ func (db *Database) Anonymise(outPath string) error {
 }
 
 func (db *Database) RestoreFromBackup(backupPath string) error {
-	logger.Infof("Restoring backup database %s into %s", backupPath, db.dbPath)
-	return os.Rename(backupPath, db.dbPath)
+	logger.Warn("Postgres backend detected, ignoring RestoreFromBackup request")
+	return nil
 }
 
 func (db *Database) AppSchemaVersion() uint {
@@ -384,13 +347,8 @@ func (db *Database) DatabasePath() string {
 }
 
 func (db *Database) DatabaseBackupPath(backupDirectoryPath string) string {
-	fn := fmt.Sprintf("%s.%d.%s", filepath.Base(db.dbPath), db.schemaVersion, time.Now().Format("20060102_150405"))
-
-	if backupDirectoryPath != "" {
-		return filepath.Join(backupDirectoryPath, fn)
-	}
-
-	return fn
+	logger.Warn("Postgres backend detected, ignoring DatabaseBackupPath request")
+	return ""
 }
 
 func (db *Database) AnonymousDatabasePath(backupDirectoryPath string) string {
