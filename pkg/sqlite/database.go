@@ -68,19 +68,19 @@ func (e *MismatchedSchemaVersionError) Error() string {
 }
 
 type storeRepository struct {
-	Blobs          database.BlobStore
-	File           database.FileStore
-	Folder         database.FolderStore
-	Image          database.ImageStore
-	Gallery        database.GalleryStore
-	GalleryChapter database.GalleryChapterStore
-	Scene          database.SceneStore
-	SceneMarker    database.SceneMarkerStore
-	Performer      database.PerformerStore
-	SavedFilter    database.SavedFilterStore
-	Studio         database.StudioStore
-	Tag            database.TagStore
-	Group          database.GroupStore
+	Blobs          *BlobStore
+	File           *FileStore
+	Folder         *FolderStore
+	Image          *ImageStore
+	Gallery        *GalleryStore
+	GalleryChapter *GalleryChapterStore
+	Scene          *SceneStore
+	SceneMarker    *SceneMarkerStore
+	Performer      *PerformerStore
+	SavedFilter    *SavedFilterStore
+	Studio         *StudioStore
+	Tag            *TagStore
+	Group          *GroupStore
 }
 
 type Database struct {
@@ -130,7 +130,7 @@ func NewDatabase() *Database {
 }
 
 func (db *Database) SetBlobStoreOptions(options database.BlobStoreOptions) {
-	db.storeRepository.Blobs = NewBlobStore(options)
+	*db.storeRepository.Blobs = *NewBlobStore(options)
 }
 
 // Ready returns an error if the database is not ready to begin transactions.
