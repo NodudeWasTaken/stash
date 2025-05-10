@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/stashapp/stash/pkg/database"
 	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
-	"github.com/stashapp/stash/pkg/sqlite"
 )
 
 type migrateJobConfig interface {
@@ -20,7 +20,7 @@ type migrateJobConfig interface {
 type MigrateJob struct {
 	BackupPath string
 	Config     migrateJobConfig
-	Database   *sqlite.Database
+	Database   database.Database
 }
 
 type databaseSchemaInfo struct {
