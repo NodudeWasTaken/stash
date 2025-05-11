@@ -1,5 +1,5 @@
-//go:build integration
-// +build integration
+//go:build pg_integration
+// +build pg_integration
 
 package postgres_test
 

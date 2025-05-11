@@ -1,5 +1,5 @@
-//go:build integration
-// +build integration
+//go:build pg_integration
+// +build pg_integration
 
 package postgres_test
 
@@ -639,7 +639,7 @@ func runTests(m *testing.M) int {
 	// create the database file
 	dbUrl, valid := os.LookupEnv("PGSQL_TEST")
 	if !valid {
-		// If the flag is set, exit gracefully by not running the tests
+		// If the flag is not set, exit gracefully by not running the tests
 		os.Exit(0)
 	}
 

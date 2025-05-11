@@ -26,14 +26,10 @@ func NewAnonymiser(db *Database, outPath string) (*sqlite.Anonymiser, error) {
 		return nil, fmt.Errorf("opening %s: %w", outPath, err)
 	}
 
-	if err := newDB.fetch(context.Background()); err != nil {
-		return nil, fmt.Errorf("fetching postgres: %w", err)
-	}
-
-	return sqlite.PassAnonymiser(newDB.Database)
+	return sqlite.PassAnonymiser(newDB, newDB.Database)
 }
 
-func (db *Anonymiser) fetch(ctx context.Context) error {
+func (db *Anonymiser) FetchAll(ctx context.Context) error {
 	var sqlite_dialect = goqu.Dialect("sqlite3")
 
 	for _, table := range []exp.IdentifierExpression{

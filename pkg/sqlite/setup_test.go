@@ -640,6 +640,13 @@ func getNewDB(databaseFile string) {
 
 func runTests(m *testing.M) int {
 	// create the database file
+	dbUrl, valid := os.LookupEnv("PGSQL_TEST")
+	if valid {
+		// If the flag is set, exit gracefully by not running the tests
+		os.Exit(0)
+	}
+
+	// create the database file
 	f, err := os.CreateTemp("", "*.sqlite")
 	if err != nil {
 		panic(fmt.Sprintf("Could not create temporary file: %s", err.Error()))
