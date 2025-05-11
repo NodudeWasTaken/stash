@@ -2,10 +2,10 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/doug-martin/goqu/v9"
@@ -81,36 +81,64 @@ func (s *customFieldsStore) validateCustomFieldName(fieldName string) error {
 	return nil
 }
 
-func getSQLValueFromCustomFieldInput(input interface{}) (interface{}, error) {
-	switch v := input.(type) {
-	case []interface{}, map[string]interface{}:
-		// TODO - in future it would be nice to convert to a JSON string
-		// however, we would need some way to differentiate between a JSON string and a regular string
-		// for now, we will not support objects and arrays
-		return nil, fmt.Errorf("unsupported custom field value type: %T", input)
-	default:
-		return v, nil
+func getSQLValueFromCustomFieldInput(input any) (interface{}, error) {
+	jsonBytes, err := json.Marshal(input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal custom field value: %w", err)
 	}
+	return string(jsonBytes), nil
+}
+
+func getSQLTypeFromInput(input any) string {
+	return reflect.TypeOf(input).String()
 }
 
 func (s *customFieldsStore) sqlValueToValue(value interface{}, gotype string) (interface{}, error) {
-	if val, ok := value.([]byte); ok {
-		str := string(val)
-
-		if gotype == "string" {
-			return str, nil
-		}
-		if gotype == "int64" {
-			return strconv.ParseInt(str, 10, 64)
-		}
-		if gotype == "float64" {
-			return strconv.ParseFloat(str, 64)
-		}
-
-		return val, fmt.Errorf("no suitable conversion type")
+	val, ok := value.([]byte)
+	if !ok {
+		return value, nil
 	}
 
-	return value, nil
+	var res interface{}
+
+	if err := json.Unmarshal(val, &res); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSONB value: %w", err)
+	}
+
+	switch gotype {
+	case "string":
+		str, ok := res.(string)
+		if !ok {
+			return nil, fmt.Errorf("expected string, got %T", res)
+		}
+		return str, nil
+	case "int64":
+		f, ok := res.(float64)
+		if !ok {
+			return nil, fmt.Errorf("expected float64 for int64 conversion, got %T", res)
+		}
+		return int64(f), nil
+	case "float64":
+		f, ok := res.(float64)
+		if !ok {
+			return nil, fmt.Errorf("expected float64, got %T", res)
+		}
+		return f, nil
+	case "[]interface {}":
+		arr, ok := res.([]interface{})
+		if !ok {
+			return nil, fmt.Errorf("expected array, got %T", res)
+		}
+		return arr, nil
+	case "map[string]interface {}":
+		m, ok := res.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("expected map, got %T", res)
+		}
+		return m, nil
+	default:
+		return res, nil
+	}
 }
 
 func (s *customFieldsStore) setCustomFields(ctx context.Context, id int, values map[string]interface{}, partial bool) error {
@@ -138,8 +166,8 @@ func (s *customFieldsStore) setCustomFields(ctx context.Context, id int, values 
 		}
 		r[i] = goqu.Record{
 			"field":                key,
-			"value":                goqu.L("CAST(? AS TEXT)::BYTEA", fmt.Sprintf("%v", v)),
-			"type":                 reflect.TypeOf(value).String(),
+			"value":                goqu.L("?::JSONB", v),
+			"type":                 getSQLTypeFromInput(value),
 			s.fk.GetCol().(string): id,
 		}
 		i++
@@ -232,35 +260,29 @@ func (h *customFieldsFilterHandler) leftJoin(f *filterBuilder, as string, field 
 
 func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs string, cc models.CustomFieldCriterionInput) {
 	// convert values
-	cv := make([]interface{}, len(cc.Value))
-	for i, v := range cc.Value {
-		var err error
-		cv[i], err = getSQLValueFromCustomFieldInput(v)
-		if err != nil {
-			f.setError(err)
-			return
-		}
-	}
+	cv := append([]interface{}{}, cc.Value...)
 
-	pgMod := fmt.Sprintf("encode(%s.value, 'escape')", joinAs)
+	valueAsString := fmt.Sprintf("%s.value->>0", joinAs)
+	valueAsNumber := fmt.Sprintf("%s.value::numeric", joinAs)
+	valueIsNumber := fmt.Sprintf("jsonb_typeof(%s.value) = 'number'", joinAs)
 
 	switch cc.Modifier {
 	case models.CriterionModifierEquals:
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("LOWER(%s) LIKE LOWER(%s)", pgMod, getInBinding(len(cv))), cv...)
+		f.addWhere(fmt.Sprintf("LOWER(%s) LIKE LOWER(%s)", valueAsString, getInBinding(len(cv))), cv...)
 	case models.CriterionModifierNotEquals:
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("LOWER(%s) NOT LIKE LOWER(%s)", pgMod, getInBinding(len(cv))), cv...)
+		f.addWhere(fmt.Sprintf("LOWER(%s) NOT LIKE LOWER(%s)", valueAsString, getInBinding(len(cv))), cv...)
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
 		for i, v := range cv {
-			clauses[i] = makeClause(fmt.Sprintf("LOWER(%s) LIKE LOWER(?)", pgMod), fmt.Sprintf("%%%v%%", v))
+			clauses[i] = makeClause(fmt.Sprintf("LOWER(%s) LIKE LOWER(?)", valueAsString), fmt.Sprintf("%%%v%%", v))
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 		f.whereClauses = append(f.whereClauses, clauses...)
 	case models.CriterionModifierExcludes:
 		for _, v := range cv {
-			f.addWhere(fmt.Sprintf("LOWER(%s) NOT LIKE LOWER(?)", pgMod), fmt.Sprintf("%%%v%%", v))
+			f.addWhere(fmt.Sprintf("LOWER(%s) NOT LIKE LOWER(?)", valueAsString), fmt.Sprintf("%%%v%%", v))
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierMatchesRegex:
@@ -273,7 +295,7 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("regexp(?, %s)", pgMod), v)
+			f.addWhere(fmt.Sprintf("regexp(?, %s)", valueAsString), v)
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierNotMatchesRegex:
@@ -286,43 +308,43 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR NOT regexp(?, %s))", joinAs, pgMod), v)
+			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR NOT regexp(?, %s))", joinAs, valueAsString), v)
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierIsNull:
 		h.leftJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s.value IS NULL OR TRIM(%s) = ''", joinAs, pgMod))
+		f.addWhere(fmt.Sprintf("%s.value IS NULL OR TRIM(%s) = ''", joinAs, valueAsString))
 	case models.CriterionModifierNotNull:
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("TRIM(%s) != ''", pgMod))
+		f.addWhere(fmt.Sprintf("TRIM(%s) != ''", valueAsString))
 	case models.CriterionModifierBetween:
 		if len(cv) != 2 {
 			f.setError(fmt.Errorf("expected 2 values for custom field criterion modifier BETWEEN, got %d", len(cv)))
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s.type IN ('int64', 'float64')", joinAs))
-		f.addWhere(fmt.Sprintf("%s::numeric BETWEEN ? AND ?", pgMod), cv[0], cv[1])
+		f.addWhere(valueIsNumber)
+		f.addWhere(fmt.Sprintf("%s BETWEEN ? AND ?", valueAsNumber), cv[0], cv[1])
 	case models.CriterionModifierNotBetween:
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s.type IN ('int64', 'float64')", joinAs))
-		f.addWhere(fmt.Sprintf("%s::numeric NOT BETWEEN ? AND ?", pgMod), cv[0], cv[1])
+		f.addWhere(valueIsNumber)
+		f.addWhere(fmt.Sprintf("%s NOT BETWEEN ? AND ?", valueAsNumber), cv[0], cv[1])
 	case models.CriterionModifierLessThan:
 		if len(cv) != 1 {
 			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s.type IN ('int64', 'float64')", joinAs))
-		f.addWhere(fmt.Sprintf("%s::numeric < ?", pgMod), cv[0])
+		f.addWhere(valueIsNumber)
+		f.addWhere(fmt.Sprintf("%s < ?", valueAsNumber), cv[0])
 	case models.CriterionModifierGreaterThan:
 		if len(cv) != 1 {
 			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))
 			return
 		}
 		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s.type IN ('int64', 'float64')", joinAs))
-		f.addWhere(fmt.Sprintf("%s::numeric > ?", pgMod), cv[0])
+		f.addWhere(valueIsNumber)
+		f.addWhere(fmt.Sprintf("%s > ?", valueAsNumber), cv[0])
 	default:
 		f.setError(fmt.Errorf("unsupported custom field criterion modifier: %s", cc.Modifier))
 	}

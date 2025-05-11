@@ -2,7 +2,7 @@
 CREATE TABLE performer_custom_fields (
   performer_id integer NOT NULL,
   field text NOT NULL,
-  "value" bytea NOT NULL,
+  "value" jsonb NOT NULL,
   PRIMARY KEY ("performer_id", "field"),
   foreign key("performer_id") references "performers"("id") on delete CASCADE
 );
