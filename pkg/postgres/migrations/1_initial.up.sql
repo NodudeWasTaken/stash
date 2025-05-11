@@ -83,9 +83,9 @@ CREATE TABLE IF NOT EXISTS saved_filters (
   id serial not null primary key,
   name text not null,
   mode varchar(255) not null,
-  find_filter bytea,
-  object_filter bytea,
-  ui_options bytea
+  find_filter jsonb,
+  object_filter jsonb,
+  ui_options jsonb
 );
 CREATE TABLE IF NOT EXISTS images (
   id serial not null primary key,
