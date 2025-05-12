@@ -42,9 +42,12 @@ func NewAnonymiser(db *Database, outPath string) (*Anonymiser, error) {
 
 type ForeignAnonymiser interface {
 	FetchAll(ctx context.Context) error
+	GetSqliteDatabase() *Database
 }
 
-func PassAnonymiser(sourceDB ForeignAnonymiser, db *Database) (*Anonymiser, error) {
+func PassAnonymiser(sourceDB ForeignAnonymiser) (*Anonymiser, error) {
+	db := sourceDB.GetSqliteDatabase()
+
 	db.writeDB.Close()
 
 	db.writeDB, _ = db.open(true, true)

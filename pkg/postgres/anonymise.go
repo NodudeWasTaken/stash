@@ -26,7 +26,11 @@ func NewAnonymiser(db *Database, outPath string) (*sqlite.Anonymiser, error) {
 		return nil, fmt.Errorf("opening %s: %w", outPath, err)
 	}
 
-	return sqlite.PassAnonymiser(newDB, newDB.Database)
+	return sqlite.PassAnonymiser(newDB)
+}
+
+func (db *Anonymiser) GetSqliteDatabase() *sqlite.Database {
+	return db.Database
 }
 
 func (db *Anonymiser) FetchAll(ctx context.Context) error {
