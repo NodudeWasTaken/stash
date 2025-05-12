@@ -36,6 +36,11 @@ func (db *Anonymiser) GetSqliteDatabase() *sqlite.Database {
 func (db *Anonymiser) FetchAll(ctx context.Context) error {
 	var sqlite_dialect = goqu.Dialect("sqlite3")
 
+	ctx, err := db.Begin(ctx, true)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+
 	for _, table := range []exp.IdentifierExpression{
 		goqu.I(fileTable),
 		goqu.I(fingerprintTable),
@@ -115,11 +120,6 @@ func (db *Anonymiser) FetchAll(ctx context.Context) error {
 			}
 
 			// Insert
-			ctx, err := db.Begin(ctx, true)
-			if err != nil {
-				return fmt.Errorf("begin tx: %w", err)
-			}
-
 			i := sqlite_dialect.Insert(table).Rows(rowsSlice)
 			sql, args, err := i.ToSQL()
 			if err != nil {
