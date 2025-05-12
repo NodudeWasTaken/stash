@@ -131,13 +131,13 @@ func (db *Anonymiser) FetchAll(ctx context.Context) error {
 				return fmt.Errorf("exec `%s` [%v]: %w", sql, args, err)
 			}
 
-			if err := db.Commit(ctx); err != nil {
-				return fmt.Errorf("commit: %w", err)
-			}
-
 			// Move to the next batch
 			offset += batchSize
 		}
+	}
+
+	if err := db.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 
 	return nil
