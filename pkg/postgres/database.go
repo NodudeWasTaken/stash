@@ -139,9 +139,6 @@ func (db *Database) Ready() error {
 // necessary migrations must be run separately using RunMigrations.
 // Returns true if the database is new.
 func (db *Database) Open(dbPath string) error {
-	db.lock()
-	defer db.unlock()
-
 	db.dbPath, _ = strings.CutPrefix(dbPath, string(database.PostgresBackend)+":")
 
 	databaseSchemaVersion, err := db.getDatabaseSchemaVersion()
@@ -190,26 +187,7 @@ func (db *Database) Open(dbPath string) error {
 	return nil
 }
 
-// lock locks the database for writing. This method will block until the lock is acquired.
-func (db *Database) lock() {
-	db.lockChan <- struct{}{}
-}
-
-// unlock unlocks the database
-func (db *Database) unlock() {
-	// will block the caller if the lock is not held, so check first
-	select {
-	case <-db.lockChan:
-		return
-	default:
-		panic("database is not locked")
-	}
-}
-
 func (db *Database) Close() error {
-	db.lock()
-	defer db.unlock()
-
 	if db.readDB != nil {
 		if err := db.readDB.Close(); err != nil {
 			return err

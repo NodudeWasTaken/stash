@@ -636,11 +636,11 @@ func (qb *PerformerStore) makeQuery(ctx context.Context, performerFilter *models
 
 	var err error
 	var agg []string
-	query.sortAndPagination, agg, err = qb.getPerformerSort(findFilter)
+	query.sort, agg, err = qb.getPerformerSort(findFilter)
 	if err != nil {
 		return nil, err
 	}
-	query.sortAndPagination += getPagination(findFilter)
+	query.pagination += getPagination(findFilter)
 	query.addGroupBy(agg...)
 
 	return &query, nil

@@ -634,11 +634,11 @@ func (qb *TagStore) Query(ctx context.Context, tagFilter *models.TagFilterType, 
 
 	var err error
 	var group []string
-	query.sortAndPagination, group, err = qb.getTagSort(&query, findFilter)
+	query.sort, group, err = qb.getTagSort(&query, findFilter)
 	if err != nil {
 		return nil, 0, err
 	}
-	query.sortAndPagination += getPagination(findFilter)
+	query.pagination += getPagination(findFilter)
 	query.addGroupBy(group...)
 	idsResult, countResult, err := query.executeFind(ctx)
 	if err != nil {

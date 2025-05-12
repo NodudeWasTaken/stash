@@ -544,11 +544,11 @@ func (qb *StudioStore) makeQuery(ctx context.Context, studioFilter *models.Studi
 
 	var err error
 	var group []string
-	query.sortAndPagination, group, err = qb.getStudioSort(findFilter)
+	query.sort, group, err = qb.getStudioSort(findFilter)
 	if err != nil {
 		return nil, err
 	}
-	query.sortAndPagination += getPagination(findFilter)
+	query.pagination += getPagination(findFilter)
 	query.addGroupBy(group...)
 
 	return &query, nil

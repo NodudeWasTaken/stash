@@ -871,7 +871,7 @@ func (qb *FileStore) Query(ctx context.Context, options models.FileQueryOptions)
 	if err := qb.setQuerySort(&query, findFilter); err != nil {
 		return nil, err
 	}
-	query.sortAndPagination += getPagination(findFilter)
+	query.pagination += getPagination(findFilter)
 
 	result, err := qb.queryGroupedFields(ctx, options, query)
 	if err != nil {
@@ -940,11 +940,11 @@ func (qb *FileStore) setQuerySort(query *queryBuilder, findFilter *models.FindFi
 	switch sort {
 	case "path":
 		// special handling for path
-		query.sortAndPagination += fmt.Sprintf(" ORDER BY folders.path %s, files.basename %[1]s", direction)
+		query.sort += fmt.Sprintf(" ORDER BY folders.path %s, files.basename %[1]s", direction)
 		query.addGroupBy("folders.path", "files.basename")
 	default:
 		add, agg := getSort(sort, direction, "files")
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	}
 

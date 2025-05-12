@@ -1006,7 +1006,8 @@ func (qb *ImageStore) setImageSortAndPagination(q *queryBuilder, findFilter *mod
 	sortClause += ", COALESCE(images.title, CAST(images.id as text)) COLLATE NATURAL_CI ASC"
 	q.addGroupBy("images.title", "images.id")
 
-	q.sortAndPagination = sortClause + getPagination(findFilter)
+	q.sort = sortClause
+	q.pagination = getPagination(findFilter)
 
 	return nil
 }

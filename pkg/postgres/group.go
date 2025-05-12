@@ -450,7 +450,7 @@ func (qb *GroupStore) makeQuery(ctx context.Context, groupFilter *models.GroupFi
 		return nil, err
 	}
 
-	query.sortAndPagination += getPagination(findFilter)
+	query.pagination += getPagination(findFilter)
 
 	return &query, nil
 }
@@ -518,28 +518,28 @@ func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindF
 		// sub_group_order is a special sort that sorts by the order_index of the subgroups
 		if query.hasJoin("groups_parents") {
 			add, agg := getSort("order_index", direction, "groups_parents")
-			query.sortAndPagination += add
+			query.sort += add
 			query.addGroupBy(agg...)
 		} else {
 			// this will give unexpected results if the query is not filtered by a parent group and
 			// the group has multiple parents and order indexes
 			query.join(groupRelationsTable, "", "groups.id = groups_relations.sub_id")
 			add, agg := getSort("order_index", direction, groupRelationsTable)
-			query.sortAndPagination += add
+			query.sort += add
 			query.addGroupBy(agg...)
 		}
 	case "tag_count":
-		query.sortAndPagination += getCountSort(groupTable, groupsTagsTable, groupIDColumn, direction)
+		query.sort += getCountSort(groupTable, groupsTagsTable, groupIDColumn, direction)
 	case "scenes_count": // generic getSort won't work for this
-		query.sortAndPagination += getCountSort(groupTable, groupsScenesTable, groupIDColumn, direction)
+		query.sort += getCountSort(groupTable, groupsScenesTable, groupIDColumn, direction)
 	default:
 		add, agg := getSort(sort, direction, "groups")
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	}
 
 	// Whatever the sorting, always use name/id as a final sort
-	query.sortAndPagination += ", COALESCE(groups.name, CAST(groups.id as text)) COLLATE NATURAL_CI ASC"
+	query.sort += ", COALESCE(groups.name, CAST(groups.id as text)) COLLATE NATURAL_CI ASC"
 	query.addGroupBy("groups.name", "groups.id")
 	return nil
 }

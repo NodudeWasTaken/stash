@@ -982,7 +982,7 @@ func (qb *SceneStore) makeQuery(ctx context.Context, sceneFilter *models.SceneFi
 	if err := qb.setSceneSort(&query, findFilter); err != nil {
 		return nil, err
 	}
-	query.sortAndPagination += getPagination(findFilter)
+	query.pagination += getPagination(findFilter)
 
 	return &query, nil
 }
@@ -1157,24 +1157,24 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 	case "movie_scene_number":
 		query.join(groupsScenesTable, "", "scenes.id = groups_scenes.scene_id")
 		add, group := getSort("scene_index", direction, groupsScenesTable)
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(group...)
 	case "group_scene_number":
 		query.join(groupsScenesTable, "scene_group", "scenes.id = scene_group.scene_id")
 		add, group := getSort("scene_index", direction, "scene_group")
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(group...)
 	case "tag_count":
-		query.sortAndPagination += getCountSort(sceneTable, scenesTagsTable, sceneIDColumn, direction)
+		query.sort += getCountSort(sceneTable, scenesTagsTable, sceneIDColumn, direction)
 	case "performer_count":
-		query.sortAndPagination += getCountSort(sceneTable, performersScenesTable, sceneIDColumn, direction)
+		query.sort += getCountSort(sceneTable, performersScenesTable, sceneIDColumn, direction)
 	case "file_count":
-		query.sortAndPagination += getCountSort(sceneTable, scenesFilesTable, sceneIDColumn, direction)
+		query.sort += getCountSort(sceneTable, scenesFilesTable, sceneIDColumn, direction)
 	case "path":
 		// special handling for path
 		addFileTable()
 		addFolderTable()
-		query.sortAndPagination += fmt.Sprintf(" ORDER BY COALESCE(folders.path, '') || COALESCE(files.basename, '') COLLATE NATURAL_CI %s", direction)
+		query.sort += fmt.Sprintf(" ORDER BY COALESCE(folders.path, '') || COALESCE(files.basename, '') COLLATE NATURAL_CI %s", direction)
 		query.addGroupBy("folders.path", "files.basename")
 	case "perceptual_similarity":
 		// special handling for phash
@@ -1187,62 +1187,62 @@ func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindF
 			},
 		)
 
-		query.sortAndPagination += " ORDER BY fingerprints_phash.fingerprint " + direction + ", files.size DESC"
+		query.sort += " ORDER BY fingerprints_phash.fingerprint " + direction + ", files.size DESC"
 		query.addGroupBy("fingerprints_phash.fingerprint", "files.size")
 	case "bitrate":
 		sort = "bit_rate"
 		addVideoFileTable()
 		add, group := getSort(sort, direction, videoFileTable)
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(group...)
 	case "file_mod_time":
 		sort = "mod_time"
 		addFileTable()
 		add, agg := getSort(sort, direction, fileTable)
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	case "framerate":
 		sort = "frame_rate"
 		addVideoFileTable()
 		add, agg := getSort(sort, direction, videoFileTable)
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	case "filesize":
 		addFileTable()
 		add, agg := getSort(sort, direction, fileTable)
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	case "duration":
 		addVideoFileTable()
 		add, agg := getSort(sort, direction, videoFileTable)
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	case "interactive", "interactive_speed":
 		addVideoFileTable()
 		add, agg := getSort(sort, direction, videoFileTable)
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	case "title":
 		addFileTable()
 		addFolderTable()
-		query.sortAndPagination += " ORDER BY COALESCE(scenes.title, files.basename) COLLATE NATURAL_CI " + direction + ", folders.path COLLATE NATURAL_CI " + direction
+		query.sort += " ORDER BY COALESCE(scenes.title, files.basename) COLLATE NATURAL_CI " + direction + ", folders.path COLLATE NATURAL_CI " + direction
 		query.addGroupBy("scenes.title", "files.basename", "folders.path")
 	case "play_count":
-		query.sortAndPagination += getCountSort(sceneTable, scenesViewDatesTable, sceneIDColumn, direction)
+		query.sort += getCountSort(sceneTable, scenesViewDatesTable, sceneIDColumn, direction)
 	case "last_played_at":
-		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(view_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", scenesViewDatesTable, sceneIDColumn, sceneTable, getSortDirection(direction))
+		query.sort += fmt.Sprintf(" ORDER BY (SELECT MAX(view_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", scenesViewDatesTable, sceneIDColumn, sceneTable, getSortDirection(direction))
 	case "last_o_at":
-		query.sortAndPagination += fmt.Sprintf(" ORDER BY (SELECT MAX(o_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", scenesODatesTable, sceneIDColumn, sceneTable, getSortDirection(direction))
+		query.sort += fmt.Sprintf(" ORDER BY (SELECT MAX(o_date) FROM %s AS sort WHERE sort.%s = %s.id) %s", scenesODatesTable, sceneIDColumn, sceneTable, getSortDirection(direction))
 	case "o_counter":
-		query.sortAndPagination += getCountSort(sceneTable, scenesODatesTable, sceneIDColumn, direction)
+		query.sort += getCountSort(sceneTable, scenesODatesTable, sceneIDColumn, direction)
 	default:
 		add, agg := getSort(sort, direction, "scenes")
-		query.sortAndPagination += add
+		query.sort += add
 		query.addGroupBy(agg...)
 	}
 
 	// Whatever the sorting, always use title/id as a final sort
-	query.sortAndPagination += ", COALESCE(scenes.title, CAST(scenes.id as text)) COLLATE NATURAL_CI ASC"
+	query.sort += ", COALESCE(scenes.title, CAST(scenes.id as text)) COLLATE NATURAL_CI ASC"
 	query.addGroupBy("scenes.title", "scenes.id")
 
 	return nil

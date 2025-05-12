@@ -96,6 +96,31 @@ func (r *repository) runIdsQuery(ctx context.Context, query string, args []inter
 	return vsm, nil
 }
 
+type RowWithCount struct {
+	ID         int `db:"id"`
+	TotalCount int `db:"total_count"`
+}
+
+func (r *repository) runIdsWithCount(ctx context.Context, query string, args []interface{}) ([]int, int, error) {
+	var result []RowWithCount
+
+	if err := dbWrapper.Select(ctx, &result, query, args...); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, 0, fmt.Errorf("running query: %s [%v]: %w", query, args, err)
+	}
+
+	if len(result) == 0 {
+		return []int{}, 0, nil
+	}
+
+	ids := make([]int, len(result))
+	for i, row := range result {
+		ids[i] = row.ID
+	}
+
+	total := result[0].TotalCount
+	return ids, total, nil
+}
+
 func (r *repository) queryFunc(ctx context.Context, query string, args []interface{}, single bool, f func(rows *sqlx.Rows) error) error {
 	rows, err := dbWrapper.Queryx(ctx, query, args...)
 
@@ -171,7 +196,21 @@ func (r *repository) buildQueryBody(body string, whereClauses []string, havingCl
 	return body
 }
 
-func (r *repository) executeFindQuery(ctx context.Context, body string, args []interface{}, sortAndPagination string, whereClauses []string, havingClauses []string, withClauses []string, groupByClauses []string, recursiveWith bool) ([]int, int, error) {
+func (r *repository) buildCombinedQuery(body, sort, pagination string) string {
+	return `
+		WITH base_query AS (
+			` + body + `
+			` + sort + `
+		),
+		total AS (
+			SELECT COUNT(*) AS total_count FROM base_query
+		)
+		SELECT base_query.id, total.total_count
+		FROM base_query, total
+		` + pagination
+}
+
+func (r *repository) executeFindQuery(ctx context.Context, body string, args []interface{}, sort string, pagination string, whereClauses []string, havingClauses []string, withClauses []string, groupByClauses []string, recursiveWith bool) ([]int, int, error) {
 	body = r.buildQueryBody(body, whereClauses, havingClauses, groupByClauses)
 
 	withClause := ""
@@ -183,26 +222,11 @@ func (r *repository) executeFindQuery(ctx context.Context, body string, args []i
 		withClause = "WITH " + recursive + strings.Join(withClauses, ", ") + " "
 	}
 
-	countQuery := withClause + r.buildCountQuery(body)
-	idsQuery := withClause + body + sortAndPagination
-
 	// Perform query and fetch result
-	var countResult int
-	var countErr error
-	var idsResult []int
-	var idsErr error
+	combinedQuery := withClause + r.buildCombinedQuery(body, sort, pagination)
+	idsResult, countResult, queryErr := r.runIdsWithCount(ctx, combinedQuery, args)
 
-	countResult, countErr = r.runCountQuery(ctx, countQuery, args)
-	idsResult, idsErr = r.runIdsQuery(ctx, idsQuery, args)
-
-	if countErr != nil {
-		return nil, 0, fmt.Errorf("error executing count query with SQL: %s, args: %v, error: %s", countQuery, args, countErr.Error())
-	}
-	if idsErr != nil {
-		return nil, 0, fmt.Errorf("error executing find query with SQL: %s, args: %v, error: %s", idsQuery, args, idsErr.Error())
-	}
-
-	return idsResult, countResult, nil
+	return idsResult, countResult, queryErr
 }
 
 func (r *repository) newQuery() queryBuilder {

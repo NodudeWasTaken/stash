@@ -23,7 +23,8 @@ type queryBuilder struct {
 	recursiveWith  bool
 	groupByClauses []string
 
-	sortAndPagination string
+	sort       string
+	pagination string
 }
 
 func (qb queryBuilder) body() string {
@@ -54,7 +55,7 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 
 	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupByClauses)
 	if includeSortPagination {
-		body += qb.sortAndPagination
+		body += qb.sort + qb.pagination
 	}
 
 	return body
@@ -68,7 +69,7 @@ func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
 
 func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	body := qb.body()
-	return qb.repository.executeFindQuery(ctx, body, qb.args, qb.sortAndPagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+	return qb.repository.executeFindQuery(ctx, body, qb.args, qb.sort, qb.pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
 }
 
 func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
