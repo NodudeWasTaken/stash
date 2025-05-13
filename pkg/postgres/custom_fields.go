@@ -295,7 +295,7 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("regexp(?, %s)", valueAsString), v)
+			f.addWhere(fmt.Sprintf("regexp_like(%s, ?)", valueAsString), v)
 		}
 		h.innerJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierNotMatchesRegex:
@@ -308,7 +308,7 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 				f.setError(err)
 				return
 			}
-			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR NOT regexp(?, %s))", joinAs, valueAsString), v)
+			f.addWhere(fmt.Sprintf("(%s.value IS NULL OR NOT regexp_like(%s, ?))", joinAs, valueAsString), v)
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierIsNull:

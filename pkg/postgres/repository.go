@@ -223,7 +223,7 @@ func (r *repository) executeFindQuery(ctx context.Context, body string, args []i
 	}
 
 	// Perform query and fetch result
-	combinedQuery := withClause + r.buildCombinedQuery(body, sort, pagination)
+	combinedQuery := r.buildCombinedQuery(withClause+body, sort, pagination)
 	idsResult, countResult, queryErr := r.runIdsWithCount(ctx, combinedQuery, args)
 
 	return idsResult, countResult, queryErr
