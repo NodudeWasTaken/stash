@@ -127,16 +127,3 @@ func BatchFindFilter(batchSize int) *FindFilterType {
 		Page:    &page,
 	}
 }
-
-// EnsureFindFilterSorted sets an ordering if one is missing
-// Database ordering is unstable otherwise
-func EnsureFindFilterSorted(findFilter *FindFilterType) {
-	if findFilter == nil {
-		findFilter = &FindFilterType{}
-	}
-
-	if findFilter.Sort == nil || *findFilter.Sort == "" {
-		idStr := "id"
-		findFilter.Sort = &idStr
-	}
-}

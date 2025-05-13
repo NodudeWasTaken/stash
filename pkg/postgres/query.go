@@ -9,6 +9,11 @@ import (
 	"github.com/stashapp/stash/pkg/sliceutil"
 )
 
+type queryPagination struct {
+	page    int
+	perPage int
+}
+
 type queryBuilder struct {
 	repository *repository
 
@@ -24,7 +29,7 @@ type queryBuilder struct {
 	groupByClauses []string
 
 	sort       string
-	pagination string
+	pagination *queryPagination
 }
 
 func (qb queryBuilder) body() string {
@@ -55,7 +60,10 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 
 	body = withClause + qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupByClauses)
 	if includeSortPagination {
-		body += qb.sort + qb.pagination
+		body += qb.sort
+		if qb.pagination != nil {
+			body += getPaginationSQL(qb.pagination)
+		}
 	}
 
 	return body
@@ -69,7 +77,15 @@ func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
 
 func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	body := qb.body()
-	return qb.repository.executeFindQuery(ctx, body, qb.args, qb.sort, qb.pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+
+	// Redirect
+	if qb.pagination != nil && qb.pagination.perPage == 0 {
+		res, err := qb.executeCount(ctx)
+		return []int{}, res, err
+	}
+
+	pagination := getPaginationSQL(qb.pagination)
+	return qb.repository.executeFindQuery(ctx, body, qb.args, qb.sort, pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
 }
 
 func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {

@@ -982,7 +982,7 @@ func (qb *SceneStore) makeQuery(ctx context.Context, sceneFilter *models.SceneFi
 	if err := qb.setSceneSort(&query, findFilter); err != nil {
 		return nil, err
 	}
-	query.pagination += getPagination(findFilter)
+	query.pagination = getPagination(findFilter)
 
 	return &query, nil
 }
@@ -1112,7 +1112,9 @@ var sceneSortOptions = sortOptions{
 }
 
 func (qb *SceneStore) setSceneSort(query *queryBuilder, findFilter *models.FindFilterType) error {
-	models.EnsureFindFilterSorted(findFilter)
+	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
+		return nil
+	}
 	sort := findFilter.GetSort("title")
 
 	// CVE-2024-32231 - ensure sort is in the list of allowed sorts

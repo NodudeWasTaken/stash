@@ -640,7 +640,7 @@ func (qb *PerformerStore) makeQuery(ctx context.Context, performerFilter *models
 	if err != nil {
 		return nil, err
 	}
-	query.pagination += getPagination(findFilter)
+	query.pagination = getPagination(findFilter)
 	query.addGroupBy(agg...)
 
 	return &query, nil

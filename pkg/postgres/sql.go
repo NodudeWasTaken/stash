@@ -33,25 +33,31 @@ func getColumn(tableName string, columnName string) string {
 	return tableName + "." + columnName
 }
 
-func getPagination(findFilter *models.FindFilterType) string {
+func getPagination(findFilter *models.FindFilterType) *queryPagination {
 	if findFilter == nil {
 		panic("nil find filter for pagination")
 	}
 
 	if findFilter.IsGetAll() {
-		return " "
+		return &queryPagination{
+			page:    0,
+			perPage: -1,
+		}
 	}
 
-	return getPaginationSQL(findFilter.GetPage(), findFilter.GetPageSize())
+	return &queryPagination{
+		page:    findFilter.GetPage(),
+		perPage: findFilter.GetPageSize(),
+	}
 }
 
-func getPaginationSQL(page int, perPage int) string {
-	if perPage <= 0 {
+func getPaginationSQL(pag *queryPagination) string {
+	if pag == nil {
 		return " "
 	}
 
-	page = (page - 1) * perPage
-	return " LIMIT " + strconv.Itoa(perPage) + " OFFSET " + strconv.Itoa(page) + " "
+	var page = (pag.page - 1) * pag.perPage
+	return " LIMIT " + strconv.Itoa(pag.perPage) + " OFFSET " + strconv.Itoa(page) + " "
 }
 
 const randomSeedPrefix = "random_" // prefix for random sort

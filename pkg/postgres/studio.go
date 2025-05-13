@@ -548,7 +548,7 @@ func (qb *StudioStore) makeQuery(ctx context.Context, studioFilter *models.Studi
 	if err != nil {
 		return nil, err
 	}
-	query.pagination += getPagination(findFilter)
+	query.pagination = getPagination(findFilter)
 	query.addGroupBy(group...)
 
 	return &query, nil

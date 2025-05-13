@@ -739,7 +739,7 @@ func (qb *GalleryStore) makeQuery(ctx context.Context, galleryFilter *models.Gal
 	if err := qb.setGallerySort(&query, findFilter); err != nil {
 		return nil, err
 	}
-	query.pagination += getPagination(findFilter)
+	query.pagination = getPagination(findFilter)
 
 	return &query, nil
 }
@@ -789,7 +789,9 @@ var gallerySortOptions = sortOptions{
 }
 
 func (qb *GalleryStore) setGallerySort(query *queryBuilder, findFilter *models.FindFilterType) error {
-	models.EnsureFindFilterSorted(findFilter)
+	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
+		return nil
+	}
 	sort := findFilter.GetSort("path")
 	direction := findFilter.GetDirection()
 

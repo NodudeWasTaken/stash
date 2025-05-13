@@ -871,7 +871,7 @@ func (qb *FileStore) Query(ctx context.Context, options models.FileQueryOptions)
 	if err := qb.setQuerySort(&query, findFilter); err != nil {
 		return nil, err
 	}
-	query.pagination += getPagination(findFilter)
+	query.pagination = getPagination(findFilter)
 
 	result, err := qb.queryGroupedFields(ctx, options, query)
 	if err != nil {
@@ -928,7 +928,9 @@ var fileSortOptions = sortOptions{
 }
 
 func (qb *FileStore) setQuerySort(query *queryBuilder, findFilter *models.FindFilterType) error {
-	models.EnsureFindFilterSorted(findFilter)
+	if findFilter == nil || findFilter.Sort == nil || *findFilter.Sort == "" {
+		return nil
+	}
 	sort := findFilter.GetSort("path")
 
 	// CVE-2024-32231 - ensure sort is in the list of allowed sorts

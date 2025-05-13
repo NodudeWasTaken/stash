@@ -28,7 +28,7 @@ func post73(ctx context.Context, db *sqlx.DB) error {
 
 func (m *schema73Migrator) migrate(ctx context.Context) error {
 	if err := m.withTxn(ctx, func(tx *sqlx.Tx) error {
-		query := "SELECT `id`, `value` FROM `performer_custom_fields`"
+		query := "SELECT `performer_id`, `value` FROM `performer_custom_fields`"
 
 		rows, err := tx.Queryx(query)
 		if err != nil {
@@ -38,20 +38,20 @@ func (m *schema73Migrator) migrate(ctx context.Context) error {
 
 		for rows.Next() {
 			var (
-				id    int
-				value interface{}
+				performer_id int
+				value        interface{}
 			)
 
-			err := rows.Scan(&id, &value)
+			err := rows.Scan(&performer_id, &value)
 			if err != nil {
 				return err
 			}
 
 			gotype := reflect.TypeOf(value).String()
-			logger.Debugf("setting type for %v to %v for %v", value, gotype, id)
-			r, err := tx.Exec("UPDATE performer_custom_fields SET type = ? WHERE id = ?", gotype, id)
+			logger.Debugf("setting type for %v to %v for %v", value, gotype, performer_id)
+			r, err := tx.Exec("UPDATE performer_custom_fields SET type = ? WHERE performer_id = ?", gotype, performer_id)
 			if err != nil {
-				return fmt.Errorf("error setting type for %v to %v for %v", value, gotype, id)
+				return fmt.Errorf("error setting type for %v to %v for %v", value, gotype, performer_id)
 			}
 
 			rowsAffected, err := r.RowsAffected()
@@ -60,7 +60,7 @@ func (m *schema73Migrator) migrate(ctx context.Context) error {
 			}
 
 			if rowsAffected == 0 {
-				return fmt.Errorf("no rows affected when updating type %v to %v for %v", value, gotype, id)
+				return fmt.Errorf("no rows affected when updating type %v to %v for %v", value, gotype, performer_id)
 			}
 		}
 

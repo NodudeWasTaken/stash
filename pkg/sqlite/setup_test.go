@@ -640,7 +640,7 @@ func getNewDB(databaseFile string) {
 
 func runTests(m *testing.M) int {
 	// create the database file
-	dbUrl, valid := os.LookupEnv("PGSQL_TEST")
+	_, valid := os.LookupEnv("PGSQL_TEST")
 	if valid {
 		// If the flag is set, exit gracefully by not running the tests
 		os.Exit(0)

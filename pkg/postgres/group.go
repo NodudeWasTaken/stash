@@ -450,7 +450,7 @@ func (qb *GroupStore) makeQuery(ctx context.Context, groupFilter *models.GroupFi
 		return nil, err
 	}
 
-	query.pagination += getPagination(findFilter)
+	query.pagination = getPagination(findFilter)
 
 	return &query, nil
 }
