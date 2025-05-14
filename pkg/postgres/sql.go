@@ -39,10 +39,7 @@ func getPagination(findFilter *models.FindFilterType) *queryPagination {
 	}
 
 	if findFilter.IsGetAll() {
-		return &queryPagination{
-			page:    0,
-			perPage: -1,
-		}
+		return nil
 	}
 
 	return &queryPagination{
@@ -52,7 +49,7 @@ func getPagination(findFilter *models.FindFilterType) *queryPagination {
 }
 
 func getPaginationSQL(pag *queryPagination) string {
-	if pag == nil {
+	if pag == nil || pag.perPage < 0 {
 		return " "
 	}
 

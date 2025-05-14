@@ -9,6 +9,8 @@ import (
 
 type SavepointAction func(ctx context.Context) error
 
+const savePointPrefix = "savepoint_" // prefix for savepoint
+
 // Encapsulates an action in a savepoint
 // Its mostly used to rollback if an error occurred in postgres, as errors in postgres cancel the transaction.
 func withSavepoint(ctx context.Context, action SavepointAction) error {
@@ -24,7 +26,7 @@ func withSavepoint(ctx context.Context, action SavepointAction) error {
 	}
 
 	// Sqlite needs some letters infront of the identifier
-	rnd = "savepoint_" + rnd
+	rnd = savePointPrefix + rnd
 
 	// Create a savepoint
 	_, err = tx.Exec("SAVEPOINT " + rnd)
