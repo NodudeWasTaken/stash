@@ -34,6 +34,17 @@ func TestFolderQuery(t *testing.T) {
 			excludeIdxs: []int{folderIdxInZip},
 		},
 		{
+			name: "basename",
+			filter: &models.FolderFilterType{
+				Basename: &models.StringCriterionInput{
+					Value:    getFolderBasename(folderIdxWithParentFolder, nil),
+					Modifier: models.CriterionModifierIncludes,
+				},
+			},
+			includeIdxs: []int{folderIdxWithParentFolder},
+			excludeIdxs: []int{folderIdxInZip},
+		},
+		{
 			name: "parent folder",
 			filter: &models.FolderFilterType{
 				ParentFolder: &models.HierarchicalMultiCriterionInput{
@@ -57,6 +68,27 @@ func TestFolderQuery(t *testing.T) {
 				},
 			},
 			includeIdxs: []int{folderIdxInZip},
+			excludeIdxs: []int{folderIdxForObjectFiles},
+		},
+		{
+			name: "basename or zip file",
+			filter: &models.FolderFilterType{
+				OperatorFilter: models.OperatorFilter[models.FolderFilterType]{
+					Or: &models.FolderFilterType{
+						ZipFile: &models.MultiCriterionInput{
+							Value: []string{
+								strconv.Itoa(int(fileIDs[fileIdxZip])),
+							},
+							Modifier: models.CriterionModifierIncludes,
+						},
+					},
+				},
+				Basename: &models.StringCriterionInput{
+					Value:    getFolderBasename(folderIdxWithParentFolder, nil),
+					Modifier: models.CriterionModifierIncludes,
+				},
+			},
+			includeIdxs: []int{folderIdxWithParentFolder, folderIdxInZip},
 			excludeIdxs: []int{folderIdxForObjectFiles},
 		},
 		// TODO - add more tests for other folder filters

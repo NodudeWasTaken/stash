@@ -1,7 +1,10 @@
-import Countries from "i18n-iso-countries";
+import Countries, { LocaleData } from "i18n-iso-countries";
+
+export type NestedMessage = { [key: string]: NestedMessage | string };
 
 export const localeCountries = {
   af: () => import("i18n-iso-countries/langs/af.json"),
+  ar: () => import("i18n-iso-countries/langs/ar.json"),
   bg: () => import("i18n-iso-countries/langs/bg.json"),
   bn: () => import("i18n-iso-countries/langs/bn.json"),
   ca: () => import("i18n-iso-countries/langs/ca.json"),
@@ -39,8 +42,7 @@ export const localeCountries = {
   vi: () => import("i18n-iso-countries/langs/vi.json"),
   zh: () => import("i18n-iso-countries/langs/zh.json"),
   tw: () => import("src/locales/countryNames/zh-TW.json"),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as { [key: string]: any };
+} as { [key: string]: () => Promise<LocaleData> };
 
 export const getLocaleCode = (code: string) => {
   if (code === "zh-CN") return "zh";
@@ -56,6 +58,7 @@ export async function registerCountry(locale: string) {
 
 export const localeLoader = {
   afZA: () => import("./af-ZA.json"),
+  ar: () => import("./ar.json"),
   bgBG: () => import("./bg-BG.json"),
   bnBD: () => import("./bn-BD.json"),
   caES: () => import("./ca-ES.json"),
@@ -95,7 +98,6 @@ export const localeLoader = {
   viVN: () => import("./vi-VN.json"),
   zhCN: () => import("./zh-CN.json"),
   zhTW: () => import("./zh-TW.json"),
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-} as { [key: string]: any };
+} as { [key: string]: () => Promise<{ default: NestedMessage }> };
 
 export default localeLoader;

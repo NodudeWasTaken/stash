@@ -674,10 +674,10 @@ func verifyPerformers(t *testing.T, expectedNames []string, expectedURLs []strin
 		}
 
 		if expectedName != actualName {
-			t.Errorf("Expected performer name %s, got %s", expectedName, actualName)
+			t.Errorf("Expected performer name %q, got %q", expectedName, actualName)
 		}
 		if expectedURL != actualURL {
-			t.Errorf("Expected performer URL %s, got %s", expectedName, actualName)
+			t.Errorf("Expected performer URL %q, got %q", expectedURL, actualURL)
 		}
 		i++
 	}
@@ -753,6 +753,67 @@ func TestApplySceneXPathConfig(t *testing.T) {
 	verifyField(t, expectedStudioURL, scene.Studio.URL, "Studio.URL")
 }
 
+func TestApplySceneXPathConfigRelationshipsOnly(t *testing.T) {
+	reader := strings.NewReader(sceneHTML)
+	doc, err := htmlquery.Parse(reader)
+	if err != nil {
+		t.Fatalf("Error loading document: %s", err.Error())
+	}
+
+	scraper := makeSceneXPathConfig()
+
+	// Simulate the relationships-only scrape path:
+	// no direct scene fields, but populated Performers/Tags mappings.
+	scraper.Scene.mappedConfig = make(mappedConfig)
+	scraper.Scene.Studio = nil
+	scraper.Scene.Movies = nil
+	scraper.Scene.Groups = nil
+
+	q := &xpathQuery{
+		doc: doc,
+	}
+
+	var scene *models.ScrapedScene
+	assert.NotPanics(t, func() {
+		scene, err = scraper.scrapeScene(context.Background(), q)
+	}, "relationships-only scene scrape should not panic")
+
+	assert.NoError(t, err)
+	assert.NotNil(t, scene)
+
+	// No direct scene fields should be populated.
+	assert.Nil(t, scene.Title)
+	assert.Nil(t, scene.Date)
+
+	expectedTags := []string{
+		"Amateur",
+		"Babe",
+		"Blowjob",
+		"Exclusive",
+		"HD Porn",
+		"Pornstar",
+		"Public",
+		"Pussy Licking",
+		"Threesome",
+		"Verified Models",
+	}
+	verifyTags(t, expectedTags, scene.Tags)
+
+	expectedPerformerNames := []string{
+		"Alex D",
+		"Mia Malkova",
+		"Riley Reid",
+	}
+
+	expectedPerformerURLs := []string{
+		"/pornstar/alex-d",
+		"/pornstar/mia-malkova",
+		"/pornstar/riley-reid",
+	}
+
+	verifyPerformers(t, expectedPerformerNames, expectedPerformerURLs, scene.Performers)
+}
+
 func TestLoadXPathScraperFromYAML(t *testing.T) {
 	const yamlStr = `name: Test
 performerByURL:
@@ -780,7 +841,7 @@ xPathScrapers:
         Name: //studio
 `
 
-	c := &config{}
+	c := &Definition{}
 	err := yaml.Unmarshal([]byte(yamlStr), &c)
 
 	if err != nil {
@@ -892,7 +953,7 @@ xPathScrapers:
               selector: //span
 `
 
-	c := &config{}
+	c := &Definition{}
 	err := yaml.Unmarshal([]byte(yamlStr), &c)
 
 	if err != nil {
@@ -904,12 +965,8 @@ xPathScrapers:
 
 	client := &http.Client{}
 	ctx := context.Background()
-	s := newGroupScraper(*c, globalConfig)
-	us, ok := s.(urlScraper)
-	if !ok {
-		t.Error("couldn't convert scraper into url scraper")
-	}
-	content, err := us.viaURL(ctx, client, ts.URL, ScrapeContentTypePerformer)
+	s := scraperFromDefinition(*c, globalConfig)
+	content, err := s.viaURL(ctx, client, ts.URL, ScrapeContentTypePerformer)
 
 	if err != nil {
 		t.Errorf("Error scraping performer: %s", err.Error())

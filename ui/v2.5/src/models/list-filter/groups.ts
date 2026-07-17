@@ -17,6 +17,7 @@ import {
   ContainingGroupsCriterionOption,
   SubGroupsCriterionOption,
 } from "./criteria/groups";
+import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 
 const defaultSortBy = "name";
 
@@ -27,6 +28,7 @@ const sortByOptions = [
   "duration",
   "rating",
   "tag_count",
+  "sub_group_description",
   "sub_group_order",
 ]
   .map(ListFilterOptions.createSortBy)
@@ -63,8 +65,10 @@ const criterionOptions = [
   createMandatoryNumberCriterionOption("sub_group_count"),
   TagsCriterionOption,
   createMandatoryNumberCriterionOption("tag_count"),
+  createMandatoryNumberCriterionOption("scene_count"),
   createMandatoryTimestampCriterionOption("created_at"),
   createMandatoryTimestampCriterionOption("updated_at"),
+  CustomFieldsCriterionOption,
 ];
 
 export const GroupListFilterOptions = new ListFilterOptions(

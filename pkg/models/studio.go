@@ -28,6 +28,8 @@ type StudioFilterType struct {
 	ImageCount *IntCriterionInput `json:"image_count"`
 	// Filter by gallery count
 	GalleryCount *IntCriterionInput `json:"gallery_count"`
+	// Filter by group count
+	GroupCount *IntCriterionInput `json:"group_count"`
 	// Filter by url
 	URL *StringCriterionInput `json:"url"`
 	// Filter by studio aliases
@@ -36,16 +38,23 @@ type StudioFilterType struct {
 	ChildCount *IntCriterionInput `json:"child_count"`
 	// Filter by autotag ignore value
 	IgnoreAutoTag *bool `json:"ignore_auto_tag"`
+	// Filter by organized
+	Organized *bool `json:"organized"`
 	// Filter by related scenes that meet this criteria
 	ScenesFilter *SceneFilterType `json:"scenes_filter"`
 	// Filter by related images that meet this criteria
 	ImagesFilter *ImageFilterType `json:"images_filter"`
 	// Filter by related galleries that meet this criteria
 	GalleriesFilter *GalleryFilterType `json:"galleries_filter"`
+	// Filter by related groups that meet this criteria
+	GroupsFilter *GroupFilterType `json:"groups_filter"`
 	// Filter by created at
 	CreatedAt *TimestampCriterionInput `json:"created_at"`
 	// Filter by updated at
 	UpdatedAt *TimestampCriterionInput `json:"updated_at"`
+
+	// Filter by custom fields
+	CustomFields []CustomFieldCriterionInput `json:"custom_fields"`
 }
 
 type StudioCreateInput struct {
@@ -53,6 +62,7 @@ type StudioCreateInput struct {
 	URL      *string  `json:"url"` // deprecated
 	Urls     []string `json:"urls"`
 	ParentID *string  `json:"parent_id"`
+	ChildIds []string `json:"child_ids"`
 	// This should be a URL or a base64 encoded data URL
 	Image         *string        `json:"image"`
 	StashIds      []StashIDInput `json:"stash_ids"`
@@ -62,6 +72,9 @@ type StudioCreateInput struct {
 	Aliases       []string       `json:"aliases"`
 	TagIds        []string       `json:"tag_ids"`
 	IgnoreAutoTag *bool          `json:"ignore_auto_tag"`
+	Organized     *bool          `json:"organized"`
+
+	CustomFields map[string]interface{} `json:"custom_fields"`
 }
 
 type StudioUpdateInput struct {
@@ -70,6 +83,7 @@ type StudioUpdateInput struct {
 	URL      *string  `json:"url"` // deprecated
 	Urls     []string `json:"urls"`
 	ParentID *string  `json:"parent_id"`
+	ChildIds []string `json:"child_ids"`
 	// This should be a URL or a base64 encoded data URL
 	Image         *string        `json:"image"`
 	StashIds      []StashIDInput `json:"stash_ids"`
@@ -79,4 +93,7 @@ type StudioUpdateInput struct {
 	Aliases       []string       `json:"aliases"`
 	TagIds        []string       `json:"tag_ids"`
 	IgnoreAutoTag *bool          `json:"ignore_auto_tag"`
+	Organized     *bool          `json:"organized"`
+
+	CustomFields CustomFieldsInput `json:"custom_fields"`
 }

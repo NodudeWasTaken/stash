@@ -12,6 +12,7 @@ type GalleryGetter interface {
 // GalleryFinder provides methods to find galleries.
 type GalleryFinder interface {
 	GalleryGetter
+	IDsFromFileIDsLoader
 	FindByFingerprints(ctx context.Context, fp []Fingerprint) ([]*Gallery, error)
 	FindByChecksum(ctx context.Context, checksum string) ([]*Gallery, error)
 	FindByChecksums(ctx context.Context, checksums []string) ([]*Gallery, error)
@@ -37,12 +38,12 @@ type GalleryCounter interface {
 
 // GalleryCreator provides methods to create galleries.
 type GalleryCreator interface {
-	Create(ctx context.Context, newGallery *Gallery, fileIDs []FileID) error
+	Create(ctx context.Context, newGallery *CreateGalleryInput) error
 }
 
 // GalleryUpdater provides methods to update galleries.
 type GalleryUpdater interface {
-	Update(ctx context.Context, updatedGallery *Gallery) error
+	Update(ctx context.Context, updatedGallery *UpdateGalleryInput) error
 	UpdatePartial(ctx context.Context, id int, updatedGallery GalleryPartial) (*Gallery, error)
 	UpdateImages(ctx context.Context, galleryID int, imageIDs []int) error
 }
@@ -70,6 +71,7 @@ type GalleryReader interface {
 	PerformerIDLoader
 	TagIDLoader
 	FileLoader
+	CustomFieldsReader
 
 	All(ctx context.Context) ([]*Gallery, error)
 }
@@ -80,6 +82,9 @@ type GalleryWriter interface {
 	GalleryUpdater
 	GalleryDestroyer
 
+	CustomFieldsWriter
+
+	AddSceneIDs(ctx context.Context, galleryID int, sceneIDs []int) error
 	AddFileID(ctx context.Context, id int, fileID FileID) error
 	AddImages(ctx context.Context, galleryID int, imageIDs ...int) error
 	RemoveImages(ctx context.Context, galleryID int, imageIDs ...int) error

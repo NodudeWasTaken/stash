@@ -9,12 +9,19 @@ type ScreenshotOptions struct {
 	// Quality is the quality scale. See https://ffmpeg.org/ffmpeg.html#Main-options
 	Quality int
 
+	// Width is the width to scale the screenshot to. If 0, no scaling will be applied.
 	Width int
+	// Height is the height to scale the screenshot to. If 0, no scaling will be applied.
+	// Not used if Width is set.
+	Height int
 
 	// Verbosity is the logging verbosity. Defaults to LogLevelError if not set.
 	Verbosity ffmpeg.LogLevel
 
 	UseSelectFilter bool
+
+	// SlowSeek uses accurate seek by placing -ss after the input.
+	SlowSeek bool
 }
 
 func (o *ScreenshotOptions) setDefaults() {
@@ -56,9 +63,14 @@ func ScreenshotTime(input string, t float64, options ScreenshotOptions) ffmpeg.A
 	var args ffmpeg.Args
 	args = args.LogLevel(options.Verbosity)
 	args = args.Overwrite()
-	args = args.Seek(t)
 
+	if !options.SlowSeek {
+		args = args.Seek(t)
+	}
 	args = args.Input(input)
+	if options.SlowSeek {
+		args = args.Seek(t)
+	}
 	args = args.VideoFrames(1)
 
 	if options.Quality > 0 {
@@ -69,6 +81,9 @@ func ScreenshotTime(input string, t float64, options ScreenshotOptions) ffmpeg.A
 
 	if options.Width > 0 {
 		vf = vf.ScaleWidth(options.Width)
+		args = args.VideoFilter(vf)
+	} else if options.Height > 0 {
+		vf = vf.ScaleHeight(options.Height)
 		args = args.VideoFilter(vf)
 	}
 

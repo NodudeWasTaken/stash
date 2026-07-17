@@ -695,7 +695,7 @@ func (qb *FileStore) allInPaths(q *goqu.SelectDataset, p []string) *goqu.SelectD
 // FindAllByPaths returns the all files that are within any of the given paths.
 // Returns all if limit is < 0.
 // Returns all files if p is empty.
-func (qb *FileStore) FindAllInPaths(ctx context.Context, p []string, limit, offset int) ([]models.File, error) {
+func (qb *FileStore) FindAllInPaths(ctx context.Context, p []string, includeZipContents bool, limit, offset int) ([]models.File, error) {
 	table := qb.table()
 	folderTable := folderTableMgr.table
 
@@ -705,6 +705,10 @@ func (qb *FileStore) FindAllInPaths(ctx context.Context, p []string, limit, offs
 	).Select(table.Col(idColumn))
 
 	q = qb.allInPaths(q, p)
+
+	if !includeZipContents {
+		q = q.Where(table.Col("zip_file_id").IsNull())
+	}
 
 	if limit > -1 {
 		q = q.Limit(uint(limit))
@@ -854,26 +858,6 @@ func (qb *FileStore) validateFilter(fileFilter *models.FileFilterType) error {
 	return nil
 }
 
-func (qb *FileStore) makeFilter(ctx context.Context, fileFilter *models.FileFilterType) *filterBuilder {
-	query := &filterBuilder{}
-
-	if fileFilter.And != nil {
-		query.and(qb.makeFilter(ctx, fileFilter.And))
-	}
-	if fileFilter.Or != nil {
-		query.or(qb.makeFilter(ctx, fileFilter.Or))
-	}
-	if fileFilter.Not != nil {
-		query.not(qb.makeFilter(ctx, fileFilter.Not))
-	}
-
-	filter := filterBuilderFromHandler(ctx, &fileFilterHandler{
-		fileFilter: fileFilter,
-	})
-
-	return filter
-}
-
 func (qb *FileStore) Query(ctx context.Context, options models.FileQueryOptions) (*models.FileQueryResult, error) {
 	fileFilter := options.FileFilter
 	findFilter := options.FindFilter
@@ -899,7 +883,9 @@ func (qb *FileStore) Query(ctx context.Context, options models.FileQueryOptions)
 	if err := qb.validateFilter(fileFilter); err != nil {
 		return nil, err
 	}
-	filter := qb.makeFilter(ctx, fileFilter)
+	filter := filterBuilderFromHandler(ctx, &fileFilterHandler{
+		fileFilter: fileFilter,
+	})
 
 	if err := query.addFilter(filter); err != nil {
 		return nil, err
@@ -975,7 +961,7 @@ func (qb *FileStore) queryGroupedFields(ctx context.Context, options models.File
 		Megapixels float64
 		Size       int64
 	}{}
-	if err := qb.repository.queryStruct(ctx, aggregateQuery.toSQL(includeSortPagination), query.args, &out); err != nil {
+	if err := qb.repository.queryStruct(ctx, aggregateQuery.toSQL(includeSortPagination), query.allArgs(), &out); err != nil {
 		return nil, err
 	}
 

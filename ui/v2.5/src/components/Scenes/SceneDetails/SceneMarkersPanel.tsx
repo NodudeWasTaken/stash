@@ -11,12 +11,14 @@ interface ISceneMarkersPanelProps {
   sceneId: string;
   isVisible: boolean;
   onClickMarker: (marker: GQL.SceneMarkerDataFragment) => void;
+  onLoopMarker: (marker: GQL.SceneMarkerDataFragment) => void;
 }
 
 export const SceneMarkersPanel: React.FC<ISceneMarkersPanelProps> = ({
   sceneId,
   isVisible,
   onClickMarker,
+  onLoopMarker,
 }) => {
   const { data, loading } = GQL.useFindSceneMarkerTagsQuery({
     variables: { id: sceneId },
@@ -57,9 +59,8 @@ export const SceneMarkersPanel: React.FC<ISceneMarkersPanelProps> = ({
       />
     );
 
-  const sceneMarkers = (
-    data?.sceneMarkerTags.map((tag) => tag.scene_markers) ?? []
-  ).reduce((prev, current) => [...prev, ...current], []);
+  const sceneMarkers =
+    data?.sceneMarkerTags.flatMap((tag) => tag.scene_markers) ?? [];
 
   return (
     <div className="scene-markers-panel">
@@ -70,6 +71,7 @@ export const SceneMarkersPanel: React.FC<ISceneMarkersPanelProps> = ({
         <PrimaryTags
           sceneMarkers={sceneMarkers}
           onClickMarker={onClickMarker}
+          onLoopMarker={onLoopMarker}
           onEdit={onOpenEditor}
         />
       </div>

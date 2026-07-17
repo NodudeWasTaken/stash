@@ -14,15 +14,13 @@ import (
 )
 
 type stashScraper struct {
-	scraper      scraperTypeConfig
-	config       config
+	config       Definition
 	globalConfig GlobalConfig
 	client       *http.Client
 }
 
-func newStashScraper(scraper scraperTypeConfig, client *http.Client, config config, globalConfig GlobalConfig) *stashScraper {
+func newStashScraper(client *http.Client, config Definition, globalConfig GlobalConfig) *stashScraper {
 	return &stashScraper{
-		scraper:      scraper,
 		config:       config,
 		client:       client,
 		globalConfig: globalConfig,
@@ -439,27 +437,4 @@ func (s *stashScraper) scrapeImageByImage(ctx context.Context, image *models.Ima
 
 func (s *stashScraper) scrapeByURL(_ context.Context, _ string, _ ScrapeContentType) (ScrapedContent, error) {
 	return nil, ErrNotSupported
-}
-
-func imageToUpdateInput(gallery *models.Image) models.ImageUpdateInput {
-	dateToStringPtr := func(s *models.Date) *string {
-		if s != nil {
-			v := s.String()
-			return &v
-		}
-
-		return nil
-	}
-
-	// fallback to file basename if title is empty
-	title := gallery.GetTitle()
-	urls := gallery.URLs.List()
-
-	return models.ImageUpdateInput{
-		ID:      strconv.Itoa(gallery.ID),
-		Title:   &title,
-		Details: &gallery.Details,
-		Urls:    urls,
-		Date:    dateToStringPtr(gallery.Date),
-	}
 }

@@ -83,6 +83,8 @@ When building, you can optionally prepend `flags-*` targets to the target list i
 4. In a separate terminal, run `make ui-start` to run the UI in development mode
 5. Open the UI in a browser: `http://localhost:3000/`
 
+> **⚠️ Note:** Running the UI in development mode does not support sending authentication credentials due to issues with cross-origin requests. Ensure credentials are unset on the server when running the UI in development mode.
+
 Changes to the UI code can be seen by reloading the browser page.
 
 Changes to the backend code require a server restart (`CTRL-C` in the server terminal, followed by `make server-start` again) to be seen.
@@ -118,8 +120,8 @@ This project uses a modification of the [CI-GoReleaser](https://github.com/bep/d
 To cross-compile the app yourself:
 
 1. Run `make pre-ui`, `make generate` and `make ui` outside the container, to generate files and build the UI.
-2. Pull the latest compiler image from Docker Hub: `docker pull stashapp/compiler`
-3. Run `docker run --rm --mount type=bind,source="$(pwd)",target=/stash -w /stash -it stashapp/compiler /bin/bash` to open a shell inside the container.
+2. Pull the latest compiler image from GHCR: `docker pull ghcr.io/stashapp/compiler`
+3. Run `docker run --rm --mount type=bind,source="$(pwd)",target=/stash -w /stash -it ghcr.io/stashapp/compiler /bin/bash` to open a shell inside the container.
 4. From inside the container, run `make build-cc-all` to build for all platforms, or run `make build-cc-{platform}` to build for a specific platform (have a look at the `Makefile` for the list of targets).
 5. You will find the compiled binaries in `dist/`.
 

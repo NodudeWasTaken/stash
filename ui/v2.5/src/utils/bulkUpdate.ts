@@ -81,6 +81,11 @@ export function getAggregateTagIds(state: { tags: IHasID[] }[]) {
   return getAggregateIds(sortedLists);
 }
 
+export function getAggregateSceneIds(state: { scenes: IHasID[] }[]) {
+  const sortedLists = state.map((o) => o.scenes.map((oo) => oo.id).sort());
+  return getAggregateIds(sortedLists);
+}
+
 interface IGroup {
   group: IHasID;
 }
@@ -155,9 +160,8 @@ export function getAggregateState<T, U>(
   return newValue;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function setProperty<T, K extends keyof T>(obj: T, key: K, value: any) {
-  obj[key] = value;
+function setProperty<T, K extends keyof T>(obj: T, key: K, value: unknown) {
+  obj[key] = value as T[K];
 }
 
 function getProperty<T, K extends keyof T>(obj: T, key: K) {

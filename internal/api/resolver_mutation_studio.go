@@ -14,6 +14,63 @@ import (
 )
 
 // used to refetch studio after hooks run
+
+func clearRemovedChildStudios(ctx context.Context, qb models.StudioReaderWriter, parentStudioID int, childStudioIDs []int) error {
+	currentChildren, err := qb.FindChildren(ctx, parentStudioID)
+	if err != nil {
+		return err
+	}
+
+	newChildStudioIDs := make(map[int]struct{}, len(childStudioIDs))
+	for _, childStudioID := range childStudioIDs {
+		newChildStudioIDs[childStudioID] = struct{}{}
+	}
+
+	for _, currentChild := range currentChildren {
+		if _, keep := newChildStudioIDs[currentChild.ID]; keep {
+			continue
+		}
+
+		clearParentPartial := models.NewStudioPartial()
+		clearParentPartial.ID = currentChild.ID
+		clearParentPartial.ParentID = models.NewOptionalIntPtr(nil)
+
+		if _, err := qb.UpdatePartial(ctx, clearParentPartial); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func setChildStudios(ctx context.Context, qb models.StudioReaderWriter, parentStudioID int, childStudioIDs []int) error {
+	if err := clearRemovedChildStudios(ctx, qb, parentStudioID, childStudioIDs); err != nil {
+		return err
+	}
+
+	newChildStudioIDs := make(map[int]struct{}, len(childStudioIDs))
+	for _, childStudioID := range childStudioIDs {
+		if _, found := newChildStudioIDs[childStudioID]; found {
+			continue
+		}
+		newChildStudioIDs[childStudioID] = struct{}{}
+
+		childPartial := models.NewStudioPartial()
+		childPartial.ID = childStudioID
+		childPartial.ParentID = models.NewOptionalInt(parentStudioID)
+
+		if err := studio.ValidateModify(ctx, childPartial, qb); err != nil {
+			return err
+		}
+
+		if _, err := qb.UpdatePartial(ctx, childPartial); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (r *mutationResolver) getStudio(ctx context.Context, id int) (ret *models.Studio, err error) {
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		ret, err = r.repository.Studio.Find(ctx, id)
@@ -31,14 +88,15 @@ func (r *mutationResolver) StudioCreate(ctx context.Context, input models.Studio
 	}
 
 	// Populate a new studio from the input
-	newStudio := models.NewStudio()
+	newStudio := models.NewCreateStudioInput()
 
 	newStudio.Name = strings.TrimSpace(input.Name)
 	newStudio.Rating = input.Rating100
 	newStudio.Favorite = translator.bool(input.Favorite)
 	newStudio.Details = translator.string(input.Details)
 	newStudio.IgnoreAutoTag = translator.bool(input.IgnoreAutoTag)
-	newStudio.Aliases = models.NewRelatedStrings(stringslice.TrimSpace(input.Aliases))
+	newStudio.Organized = translator.bool(input.Organized)
+	newStudio.Aliases = models.NewRelatedStrings(stringslice.UniqueExcludeFold(stringslice.TrimSpace(input.Aliases), newStudio.Name))
 	newStudio.StashIDs = models.NewRelatedStashIDs(models.StashIDInputs(input.StashIds).ToStashIDs())
 
 	var err error
@@ -61,6 +119,12 @@ func (r *mutationResolver) StudioCreate(ctx context.Context, input models.Studio
 	if err != nil {
 		return nil, fmt.Errorf("converting tag ids: %w", err)
 	}
+
+	childStudioIDs, err := stringslice.StringSliceToIntSlice(input.ChildIds)
+	if err != nil {
+		return nil, fmt.Errorf("converting child ids: %w", err)
+	}
+	newStudio.CustomFields = convertMapJSONNumbers(input.CustomFields)
 
 	// Process the base 64 encoded image string
 	var imageData []byte
@@ -87,6 +151,12 @@ func (r *mutationResolver) StudioCreate(ctx context.Context, input models.Studio
 
 		if len(imageData) > 0 {
 			if err := qb.UpdateImage(ctx, newStudio.ID, imageData); err != nil {
+				return err
+			}
+		}
+
+		if input.ChildIds != nil {
+			if err := setChildStudios(ctx, qb, newStudio.ID, childStudioIDs); err != nil {
 				return err
 			}
 		}
@@ -119,6 +189,7 @@ func (r *mutationResolver) StudioUpdate(ctx context.Context, input models.Studio
 	updatedStudio.Rating = translator.optionalInt(input.Rating100, "rating100")
 	updatedStudio.Favorite = translator.optionalBool(input.Favorite, "favorite")
 	updatedStudio.IgnoreAutoTag = translator.optionalBool(input.IgnoreAutoTag, "ignore_auto_tag")
+	updatedStudio.Organized = translator.optionalBool(input.Organized, "organized")
 	updatedStudio.Aliases = translator.updateStrings(input.Aliases, "aliases")
 	updatedStudio.StashIDs = translator.updateStashIDs(input.StashIds, "stash_ids")
 
@@ -130,6 +201,11 @@ func (r *mutationResolver) StudioUpdate(ctx context.Context, input models.Studio
 	updatedStudio.TagIDs, err = translator.updateIds(input.TagIds, "tag_ids")
 	if err != nil {
 		return nil, fmt.Errorf("converting tag ids: %w", err)
+	}
+
+	childStudioIDs, err := stringslice.StringSliceToIntSlice(input.ChildIds)
+	if err != nil {
+		return nil, fmt.Errorf("converting child ids: %w", err)
 	}
 
 	if translator.hasField("urls") {
@@ -152,6 +228,11 @@ func (r *mutationResolver) StudioUpdate(ctx context.Context, input models.Studio
 		}
 	}
 
+	updatedStudio.CustomFields = input.CustomFields
+	// convert json.Numbers to int/float
+	updatedStudio.CustomFields.Full = convertMapJSONNumbers(updatedStudio.CustomFields.Full)
+	updatedStudio.CustomFields.Partial = convertMapJSONNumbers(updatedStudio.CustomFields.Partial)
+
 	// Process the base 64 encoded image string
 	var imageData []byte
 	imageIncluded := translator.hasField("image")
@@ -167,6 +248,34 @@ func (r *mutationResolver) StudioUpdate(ctx context.Context, input models.Studio
 	if err := r.withTxn(ctx, func(ctx context.Context) error {
 		qb := r.repository.Studio
 
+		if updatedStudio.Aliases != nil {
+			s, err := qb.Find(ctx, studioID)
+			if err != nil {
+				return err
+			}
+			if s != nil {
+				if err := s.LoadAliases(ctx, qb); err != nil {
+					return err
+				}
+
+				effectiveAliases := updatedStudio.Aliases.Apply(s.Aliases.List())
+				name := s.Name
+				if updatedStudio.Name.Set {
+					name = updatedStudio.Name.Value
+				}
+
+				sanitized := stringslice.UniqueExcludeFold(effectiveAliases, name)
+				updatedStudio.Aliases.Values = sanitized
+				updatedStudio.Aliases.Mode = models.RelationshipUpdateModeSet
+			}
+		}
+
+		if translator.hasField("child_ids") {
+			if err := clearRemovedChildStudios(ctx, qb, studioID, childStudioIDs); err != nil {
+				return err
+			}
+		}
+
 		if err := studio.ValidateModify(ctx, updatedStudio, qb); err != nil {
 			return err
 		}
@@ -178,6 +287,12 @@ func (r *mutationResolver) StudioUpdate(ctx context.Context, input models.Studio
 
 		if imageIncluded {
 			if err := qb.UpdateImage(ctx, studioID, imageData); err != nil {
+				return err
+			}
+		}
+
+		if translator.hasField("child_ids") {
+			if err := setChildStudios(ctx, qb, studioID, childStudioIDs); err != nil {
 				return err
 			}
 		}
@@ -233,6 +348,7 @@ func (r *mutationResolver) BulkStudioUpdate(ctx context.Context, input BulkStudi
 	partial.Rating = translator.optionalInt(input.Rating100, "rating100")
 	partial.Details = translator.optionalString(input.Details, "details")
 	partial.IgnoreAutoTag = translator.optionalBool(input.IgnoreAutoTag, "ignore_auto_tag")
+	partial.Organized = translator.optionalBool(input.Organized, "organized")
 
 	partial.TagIDs, err = translator.updateIdsBulk(input.TagIds, "tag_ids")
 	if err != nil {

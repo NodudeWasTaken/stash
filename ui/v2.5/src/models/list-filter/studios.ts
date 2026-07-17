@@ -13,6 +13,7 @@ import { ParentStudiosCriterionOption } from "./criteria/studios";
 import { TagsCriterionOption } from "./criteria/tags";
 import { ListFilterOptions } from "./filter-options";
 import { DisplayMode } from "./types";
+import { CustomFieldsCriterionOption } from "./criteria/custom-fields";
 
 const defaultSortBy = "name";
 const sortByOptions = [
@@ -21,6 +22,8 @@ const sortByOptions = [
   "random",
   "rating",
   "scenes_duration",
+  "scenes_size",
+  "latest_scene",
 ]
   .map(ListFilterOptions.createSortBy)
   .concat([
@@ -37,12 +40,36 @@ const sortByOptions = [
       value: "scenes_count",
     },
     {
+      messageID: "o_count",
+      value: "o_counter",
+    },
+    {
+      messageID: "o_count_all",
+      value: "o_counter_all",
+    },
+    {
+      messageID: "performer_count",
+      value: "performer_count",
+    },
+    {
+      messageID: "performer_count_all",
+      value: "performer_count_all",
+    },
+    {
       messageID: "subsidiary_studio_count",
       value: "child_count",
     },
+    {
+      messageID: "scene_marker_count",
+      value: "scene_markers_count",
+    },
   ]);
 
-const displayModeOptions = [DisplayMode.Grid, DisplayMode.Tagger];
+const displayModeOptions = [
+  DisplayMode.Grid,
+  DisplayMode.List,
+  DisplayMode.Tagger,
+];
 const criterionOptions = [
   FavoriteStudioCriterionOption,
   createMandatoryStringCriterionOption("name"),
@@ -52,6 +79,7 @@ const criterionOptions = [
   TagsCriterionOption,
   RatingCriterionOption,
   createBooleanCriterionOption("ignore_auto_tag"),
+  createBooleanCriterionOption("organized"),
   createMandatoryNumberCriterionOption("tag_count"),
   createMandatoryNumberCriterionOption("scene_count"),
   createMandatoryNumberCriterionOption("image_count"),
@@ -65,6 +93,7 @@ const criterionOptions = [
   ),
   createMandatoryTimestampCriterionOption("created_at"),
   createMandatoryTimestampCriterionOption("updated_at"),
+  CustomFieldsCriterionOption,
 ];
 
 export const StudioListFilterOptions = new ListFilterOptions(

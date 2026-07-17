@@ -3,6 +3,7 @@ package manager
 import (
 	"archive/zip"
 	"context"
+	gojson "encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -29,6 +30,7 @@ import (
 	"github.com/stashapp/stash/pkg/sliceutil/stringslice"
 	"github.com/stashapp/stash/pkg/studio"
 	"github.com/stashapp/stash/pkg/tag"
+	"github.com/stashapp/stash/pkg/utils"
 )
 
 type ExportTask struct {
@@ -423,9 +425,25 @@ func fileToJSON(f models.File) jsonschema.DirEntry {
 	}
 
 	for _, fp := range bf.Fingerprints {
+		fingerprintValue := fp.Fingerprint
+		// Convert phash to hex string
+		if fp.Type == models.FingerprintTypePhash {
+			if v, ok := fp.Fingerprint.(int64); ok {
+				fingerprintValue = utils.PhashToString(v)
+			}
+		}
+
+		// encode manually into json.RawMessage
+		fvEncoded, err := gojson.Marshal(fingerprintValue)
+		if err != nil {
+			// ignore - should not happen
+			logger.Warnf("[files] <%s> error encoding fingerprint %q value: %v", base.Filename(), fp.Type, err)
+			continue
+		}
+
 		base.Fingerprints = append(base.Fingerprints, jsonschema.Fingerprint{
 			Type:        fp.Type,
-			Fingerprint: fp.Fingerprint,
+			Fingerprint: gojson.RawMessage(fvEncoded),
 		})
 	}
 
@@ -651,6 +669,7 @@ func (t *ExportTask) exportImage(ctx context.Context, wg *sync.WaitGroup, jobCha
 	galleryReader := r.Gallery
 	performerReader := r.Performer
 	tagReader := r.Tag
+	imageReader := r.Image
 
 	for s := range jobChan {
 		imageHash := s.Checksum
@@ -665,14 +684,17 @@ func (t *ExportTask) exportImage(ctx context.Context, wg *sync.WaitGroup, jobCha
 			continue
 		}
 
-		newImageJSON := image.ToBasicJSON(s)
+		newImageJSON, err := image.ToBasicJSON(ctx, imageReader, s)
+		if err != nil {
+			logger.Errorf("[images] <%s> error converting image to JSON: %v", imageHash, err)
+			continue
+		}
 
 		// export files
 		for _, f := range s.Files.List() {
 			t.exportFile(f)
 		}
 
-		var err error
 		newImageJSON.Studio, err = image.GetStudioName(ctx, studioReader, s)
 		if err != nil {
 			logger.Errorf("[images] <%s> error getting image studio name: %v", imageHash, err)
@@ -779,6 +801,7 @@ func (t *ExportTask) exportGallery(ctx context.Context, wg *sync.WaitGroup, jobC
 	studioReader := r.Studio
 	performerReader := r.Performer
 	tagReader := r.Tag
+	galleryReader := r.Gallery
 	galleryChapterReader := r.GalleryChapter
 
 	for g := range jobChan {
@@ -846,6 +869,12 @@ func (t *ExportTask) exportGallery(ctx context.Context, wg *sync.WaitGroup, jobC
 		}
 
 		newGalleryJSON.Tags = tag.GetNames(tags)
+
+		newGalleryJSON.CustomFields, err = galleryReader.GetCustomFields(ctx, g.ID)
+		if err != nil {
+			logger.Errorf("[galleries] <%s> error getting gallery custom fields: %v", g.DisplayName(), err)
+			continue
+		}
 
 		if t.includeDependencies {
 			if g.StudioID != nil {

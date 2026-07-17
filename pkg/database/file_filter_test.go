@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stashapp/stash/pkg/models"
+	"github.com/stashapp/stash/pkg/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -81,7 +82,67 @@ func TestFileQuery(t *testing.T) {
 			includeIDs:  []models.FileID{fileIDs[fileIdxInZip]},
 			excludeIdxs: []int{fileIdxStartImageFiles},
 		},
-		// TODO - add more tests for other file filters
+		{
+			name: "hashes md5",
+			filter: &models.FileFilterType{
+				Hashes: []*models.FingerprintFilterInput{
+					{
+						Type:  models.FingerprintTypeMD5,
+						Value: getPrefixedStringValue("file", fileIdxStartVideoFiles, "md5"),
+					},
+				},
+			},
+			includeIdxs: []int{fileIdxStartVideoFiles},
+			excludeIdxs: []int{fileIdxStartImageFiles},
+		},
+		{
+			name: "hashes oshash",
+			filter: &models.FileFilterType{
+				Hashes: []*models.FingerprintFilterInput{
+					{
+						Type:  models.FingerprintTypeOshash,
+						Value: getPrefixedStringValue("file", fileIdxStartVideoFiles, "oshash"),
+					},
+				},
+			},
+			includeIdxs: []int{fileIdxStartVideoFiles},
+			excludeIdxs: []int{fileIdxStartImageFiles},
+		},
+		{
+			name: "hashes phash",
+			filter: &models.FileFilterType{
+				Hashes: []*models.FingerprintFilterInput{
+					{
+						Type:  models.FingerprintTypePhash,
+						Value: utils.PhashToString(getFilePhash(fileIdxStartImageFiles)),
+					},
+				},
+			},
+			includeIdxs: []int{fileIdxStartImageFiles},
+			excludeIdxs: []int{fileIdxStartVideoFiles},
+		},
+		{
+			name: "basename or zip file",
+			filter: &models.FileFilterType{
+				OperatorFilter: models.OperatorFilter[models.FileFilterType]{
+					Or: &models.FileFilterType{
+						ZipFile: &models.MultiCriterionInput{
+							Value: []string{
+								strconv.Itoa(int(fileIDs[fileIdxZip])),
+							},
+							Modifier: models.CriterionModifierIncludes,
+						},
+					},
+				},
+				Basename: &models.StringCriterionInput{
+					Value:    getPrefixedStringValue("file", fileIdxStartVideoFiles, "basename"),
+					Modifier: models.CriterionModifierIncludes,
+				},
+			},
+			includeIdxs: []int{fileIdxStartVideoFiles},
+			includeIDs:  []models.FileID{fileIDs[fileIdxInZip]},
+			excludeIdxs: []int{fileIdxStartImageFiles},
+		},
 	}
 
 	for _, tt := range tests {
@@ -95,7 +156,7 @@ func TestFileQuery(t *testing.T) {
 				},
 			})
 			if (err != nil) != tt.wantErr {
-				t.Errorf("SceneStore.Query() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("FileStore.Query() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 

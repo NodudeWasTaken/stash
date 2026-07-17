@@ -19,17 +19,23 @@ import { useToast } from "src/hooks/Toast";
 import { faExchangeAlt, faSignInAlt } from "@fortawesome/free-solid-svg-icons";
 import { ScrapeDialog } from "../Shared/ScrapeDialog/ScrapeDialog";
 import {
+  ScrapedCustomFieldRows,
+  ScrapeDialogRow,
   ScrapedImageRow,
   ScrapedInputGroupRow,
   ScrapedStringListRow,
   ScrapedTextAreaRow,
 } from "../Shared/ScrapeDialog/ScrapeDialogRow";
 import { ModalComponent } from "../Shared/Modal";
-import { sortStoredIdObjects } from "src/utils/data";
 import {
+  idToStoredID,
+  sortStoredIdObjects,
+  uniqIDStoredIDs,
+} from "src/utils/data";
+import {
+  CustomFieldScrapeResults,
   ObjectListScrapeResult,
   ScrapeResult,
-  ZeroableScrapeResult,
   hasScrapedValues,
 } from "../Shared/ScrapeDialog/scrapeResult";
 import { ScrapedTagsRow } from "../Shared/ScrapeDialog/ScrapedObjectsRow";
@@ -39,39 +45,7 @@ import {
 } from "./PerformerDetails/PerformerScrapeDialog";
 import { PerformerSelect } from "./PerformerSelect";
 import { uniq } from "lodash-es";
-
-/* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-type CustomFieldScrapeResults = Map<string, ZeroableScrapeResult<any>>;
-
-// There are a bunch of similar functions in PerformerScrapeDialog, but since we don't support
-// scraping custom fields, this one is only needed here. The `renderScraped` naming is kept the same
-// for consistency.
-function renderScrapedCustomFieldRows(
-  results: CustomFieldScrapeResults,
-  onChange: (newCustomFields: CustomFieldScrapeResults) => void
-) {
-  return (
-    <>
-      {Array.from(results.entries()).map(([field, result]) => {
-        const fieldName = `custom_${field}`;
-        return (
-          <ScrapedInputGroupRow
-            className="custom-field"
-            title={field}
-            field={fieldName}
-            key={fieldName}
-            result={result}
-            onChange={(newResult) => {
-              const newResults = new Map(results);
-              newResults.set(field, newResult);
-              onChange(newResults);
-            }}
-          />
-        );
-      })}
-    </>
-  );
-}
+import { StashIDsField } from "../Shared/StashID";
 
 type MergeOptions = {
   values: GQL.PerformerUpdateInput;
@@ -134,8 +108,11 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
   const [fakeTits, setFakeTits] = useState<ScrapeResult<string>>(
     new ScrapeResult<string>(dest.fake_tits)
   );
-  const [careerLength, setCareerLength] = useState<ScrapeResult<string>>(
-    new ScrapeResult<string>(dest.career_length)
+  const [careerStart, setCareerStart] = useState<ScrapeResult<string>>(
+    new ScrapeResult<string>(dest.career_start?.toString())
+  );
+  const [careerEnd, setCareerEnd] = useState<ScrapeResult<string>>(
+    new ScrapeResult<string>(dest.career_end?.toString())
   );
   const [tattoos, setTattoos] = useState<ScrapeResult<string>>(
     new ScrapeResult<string>(dest.tattoos)
@@ -161,6 +138,8 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
     )
   );
 
+  const [stashIDs, setStashIDs] = useState(new ScrapeResult<GQL.StashId[]>([]));
+
   const [image, setImage] = useState<ScrapeResult<string>>(
     new ScrapeResult<string>(dest.image_path)
   );
@@ -168,13 +147,6 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
   const [customFields, setCustomFields] = useState<CustomFieldScrapeResults>(
     new Map()
   );
-
-  function idToStoredID(o: { id: string; name: string }) {
-    return {
-      stored_id: o.id,
-      name: o.name,
-    };
-  }
 
   // calculate the values for everything
   // uses the first set value for single value fields, and combines all
@@ -194,6 +166,10 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
 
       setLoading(false);
     }
+
+    // append dest to all so that if dest has stash_ids with the same
+    // endpoint, then it will be excluded first
+    const all = sources.concat(dest);
 
     setName(
       new ScrapeResult(dest.name, sources.find((s) => s.name)?.name, !dest.name)
@@ -296,11 +272,18 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
         !dest.fake_tits
       )
     );
-    setCareerLength(
+    setCareerStart(
       new ScrapeResult(
-        dest.career_length,
-        sources.find((s) => s.career_length)?.career_length,
-        !dest.career_length
+        dest.career_start?.toString(),
+        sources.find((s) => s.career_start)?.career_start?.toString(),
+        !dest.career_start
+      )
+    );
+    setCareerEnd(
+      new ScrapeResult(
+        dest.career_end?.toString(),
+        sources.find((s) => s.career_end)?.career_end?.toString(),
+        !dest.career_end
       )
     );
     setTattoos(
@@ -318,11 +301,7 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
       )
     );
     setURLs(
-      new ScrapeResult(
-        dest.urls,
-        sources.find((s) => s.urls)?.urls,
-        !dest.urls?.length
-      )
+      new ScrapeResult(dest.urls ?? [], uniq(all.flatMap((s) => s.urls ?? [])))
     );
     setGender(
       new ScrapeResult(
@@ -349,6 +328,24 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
         !dest.details
       )
     );
+    setTags(
+      new ObjectListScrapeResult<GQL.ScrapedTag>(
+        sortStoredIdObjects(dest.tags.map(idToStoredID)),
+        uniqIDStoredIDs(all.flatMap((s) => s.tags.map(idToStoredID)))
+      )
+    );
+    setStashIDs(
+      new ScrapeResult(
+        dest.stash_ids,
+        all
+          .flatMap((s) => s.stash_ids)
+          .filter((s, index, a) => {
+            // remove entries with duplicate endpoints
+            return index === a.findIndex((ss) => ss.endpoint === s.endpoint);
+          })
+      )
+    );
+
     setImage(
       new ScrapeResult(
         dest.image_path,
@@ -410,7 +407,8 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
         penisLength,
         measurements,
         fakeTits,
-        careerLength,
+        careerStart,
+        careerEnd,
         tattoos,
         piercings,
         urls,
@@ -436,7 +434,8 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
     penisLength,
     measurements,
     fakeTits,
-    careerLength,
+    careerStart,
+    careerEnd,
     tattoos,
     piercings,
     urls,
@@ -552,10 +551,16 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
           onChange={(value) => setFakeTits(value)}
         />
         <ScrapedInputGroupRow
-          field="career_length"
-          title={intl.formatMessage({ id: "career_length" })}
-          result={careerLength}
-          onChange={(value) => setCareerLength(value)}
+          field="career_start"
+          title={intl.formatMessage({ id: "career_start" })}
+          result={careerStart}
+          onChange={(value) => setCareerStart(value)}
+        />
+        <ScrapedInputGroupRow
+          field="career_end"
+          title={intl.formatMessage({ id: "career_end" })}
+          result={careerEnd}
+          onChange={(value) => setCareerEnd(value)}
         />
         <ScrapedTextAreaRow
           field="tattoos"
@@ -597,6 +602,27 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
           result={details}
           onChange={(value) => setDetails(value)}
         />
+        <ScrapeDialogRow
+          field="stash_ids"
+          title={intl.formatMessage({ id: "stash_id" })}
+          result={stashIDs}
+          originalField={
+            <StashIDsField
+              values={stashIDs?.originalValue ?? []}
+              linkType="performers"
+            />
+          }
+          newField={
+            <StashIDsField
+              values={stashIDs?.newValue ?? []}
+              linkType="performers"
+            />
+          }
+          onChange={(value) => setStashIDs(value)}
+          alwaysShow={
+            !!stashIDs.originalValue?.length || !!stashIDs.newValue?.length
+          }
+        />
         <ScrapedImageRow
           field="image"
           title={intl.formatMessage({ id: "performer_image" })}
@@ -604,10 +630,12 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
           result={image}
           onChange={(value) => setImage(value)}
         />
-        {hasCustomFieldValues &&
-          renderScrapedCustomFieldRows(customFields, (newCustomFields) =>
-            setCustomFields(newCustomFields)
-          )}
+        {hasCustomFieldValues && (
+          <ScrapedCustomFieldRows
+            results={customFields}
+            onChange={(newCustomFields) => setCustomFields(newCustomFields)}
+          />
+        )}
       </>
     );
   }
@@ -642,7 +670,8 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
           : undefined,
         measurements: measurements.getNewValue(),
         fake_tits: fakeTits.getNewValue(),
-        career_length: careerLength.getNewValue(),
+        career_start: careerStart.getNewValue(),
+        career_end: careerEnd.getNewValue(),
         tattoos: tattoos.getNewValue(),
         piercings: piercings.getNewValue(),
         urls: urls.getNewValue(),
@@ -650,6 +679,7 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
         circumcised: stringToCircumcised(circumcised.getNewValue()),
         tag_ids: tags.getNewValue()?.map((t) => t.stored_id!),
         details: details.getNewValue(),
+        stash_ids: stashIDs.getNewValue(),
         image: coverImage,
         custom_fields: {
           partial: Object.fromEntries(
@@ -671,7 +701,7 @@ const PerformerMergeDetails: React.FC<IPerformerMergeDetailsProps> = ({
     : intl.formatMessage({ id: "dialogs.merge.destination" });
   const sourceLabel = !hasValues
     ? ""
-    : intl.formatMessage({ id: "dialogs.merge.source" });
+    : intl.formatMessage({ id: "dialogs.merge.combined" });
 
   return (
     <ScrapeDialog
@@ -725,6 +755,15 @@ export const PerformerMergeModal: React.FC<IPerformerMergeModalProps> = ({
     id: "actions.merge",
   });
 
+  const srcIDs = useMemo(
+    () => sourcePerformers.map((s) => s.id),
+    [sourcePerformers]
+  );
+  const destID = useMemo(
+    () => (destPerformer[0] ? [destPerformer[0].id] : []),
+    [destPerformer]
+  );
+
   useEffect(() => {
     if (performers.length > 0) {
       // set the first performer as the destination, others as source
@@ -737,8 +776,8 @@ export const PerformerMergeModal: React.FC<IPerformerMergeModalProps> = ({
   }, [performers]);
 
   async function loadPerformers() {
-    const performerIDs = sourcePerformers.map((s) => parseInt(s.id));
-    performerIDs.push(parseInt(destPerformer[0].id));
+    const performerIDs = sourcePerformers.map((s) => parseInt(s.id, 10));
+    performerIDs.push(parseInt(destPerformer[0].id, 10));
     const query = await queryFindPerformersByID(performerIDs);
     const { performers: loadedPerformers } = query.data.findPerformers;
 
@@ -833,6 +872,7 @@ export const PerformerMergeModal: React.FC<IPerformerMergeModalProps> = ({
                 onSelect={(items) => setSourcePerformers(items)}
                 values={sourcePerformers}
                 menuPortalTarget={document.body}
+                excludeIds={destID}
               />
             </Col>
           </Form.Group>
@@ -866,6 +906,7 @@ export const PerformerMergeModal: React.FC<IPerformerMergeModalProps> = ({
                 onSelect={(items) => setDestPerformer(items)}
                 values={destPerformer}
                 menuPortalTarget={document.body}
+                excludeIds={srcIDs}
               />
             </Col>
           </Form.Group>

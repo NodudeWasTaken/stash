@@ -3,11 +3,12 @@ import { Accordion, Button, Card } from "react-bootstrap";
 import { FormattedMessage, FormattedTime } from "react-intl";
 import { TruncatedText } from "src/components/Shared/TruncatedText";
 import { DeleteFilesDialog } from "src/components/Shared/DeleteFilesDialog";
+import { RevealInFilesystemButton } from "src/components/Shared/RevealInFilesystemButton";
 import * as GQL from "src/core/generated-graphql";
 import { mutateGallerySetPrimaryFile } from "src/core/StashService";
 import { useToast } from "src/hooks/Toast";
 import TextUtils from "src/utils/text";
-import { TextField, URLField, URLsField } from "src/utils/field";
+import { TextField, URLsField } from "src/utils/field";
 
 interface IFileInfoPanelProps {
   folder?: Pick<GQL.Folder, "id" | "path">;
@@ -23,7 +24,7 @@ const FileInfoPanel: React.FC<IFileInfoPanelProps> = (
   props: IFileInfoPanelProps
 ) => {
   const checksum = props.file?.fingerprints.find((f) => f.type === "md5");
-  const path = props.folder ? props.folder.path : props.file?.path ?? "";
+  const path = props.folder ? props.folder.path : (props.file?.path ?? "");
   const id = props.folder ? "folder" : "path";
 
   return (
@@ -37,13 +38,16 @@ const FileInfoPanel: React.FC<IFileInfoPanelProps> = (
             </dd>
           </>
         )}
-        <TextField id="media_info.checksum" value={checksum?.value} truncate />
-        <URLField
-          id={id}
-          url={`file://${path}`}
-          value={`file://${path}`}
-          truncate
-        />
+        <TextField id="media_info.md5" value={checksum?.value} truncate />
+        <TextField id={id}>
+          <span className="d-flex align-items-center">
+            <TruncatedText text={path} />
+            <RevealInFilesystemButton
+              folderId={props.folder?.id}
+              fileId={props.file?.id}
+            />
+          </span>
+        </TextField>
         {props.file && (
           <TextField id="file_mod_time">
             <FormattedTime
@@ -95,7 +99,7 @@ export const GalleryFileInfoPanel: React.FC<IGalleryFileInfoPanelProps> = (
     }
 
     if (props.gallery.files.length === 0) {
-      return <></>;
+      return null;
     }
 
     if (props.gallery.files.length === 1) {

@@ -29,9 +29,9 @@ import { SceneTaggerModalsState } from "./sceneTaggerModals";
 import PerformerResult from "./PerformerResult";
 import StudioResult from "./StudioResult";
 import { useInitialState } from "src/hooks/state";
-import { getStashboxBase } from "src/utils/stashbox";
 import { ExternalLink } from "src/components/Shared/ExternalLink";
 import { compareScenesForSort } from "./utils";
+import { StashIDPill } from "src/components/Shared/StashID";
 
 const getDurationIcon = (matchPercentage: number) => {
   if (matchPercentage > 65)
@@ -64,7 +64,7 @@ const getDurationStatus = (
 
   const matchCount = durations.filter((duration) => duration <= 5).length;
 
-  let match;
+  let match: JSX.Element | undefined;
   if (matchCount > 0)
     match = (
       <FormattedMessage
@@ -142,12 +142,11 @@ const getFingerprintStatus = (
     )
   );
 
-  const allPhashes = stashScene.files.reduce(
-    (pv: Pick<GQL.Fingerprint, "type" | "value">[], cv) => {
-      return [...pv, ...cv.fingerprints.filter((f) => f.type === "phash")];
-    },
-    []
-  );
+  const allPhashes: Pick<GQL.Fingerprint, "type" | "value">[] = [];
+
+  for (const file of stashScene.files) {
+    allPhashes.push(...file.fingerprints.filter((f) => f.type === "phash"));
+  }
 
   const phashMatches = matchPhashes(allPhashes, scene.fingerprints ?? []);
 
@@ -201,7 +200,7 @@ const getFingerprintStatus = (
             <FormattedMessage
               id="component_tagger.results.hash_matches"
               values={{
-                hash_type: <FormattedMessage id="media_info.checksum" />,
+                hash_type: <FormattedMessage id="media_info.md5" />,
               }}
             />
           </div>
@@ -325,15 +324,6 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
     }
   }, [isActive, loading, stashScene, index, resolveScene, scene]);
 
-  const stashBoxBaseURL = currentSource?.sourceInput.stash_box_endpoint
-    ? getStashboxBase(currentSource.sourceInput.stash_box_endpoint)
-    : undefined;
-  const stashBoxURL = useMemo(() => {
-    if (stashBoxBaseURL) {
-      return `${stashBoxBaseURL}scenes/${scene.remote_site_id}`;
-    }
-  }, [scene, stashBoxBaseURL]);
-
   const setExcludedField = (name: string, value: boolean) =>
     setExcludedFields({
       ...excludedFields,
@@ -356,7 +346,7 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
       return remoteField;
     }
 
-    let imgData;
+    let imgData: string | undefined;
     if (!excludedFields.cover_image && config.setCoverImage) {
       const imgurl = scene.image;
       if (imgurl) {
@@ -443,7 +433,11 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
     t: GQL.ScrapedTag,
     createInput?: GQL.TagCreateInput
   ) {
-    const toCreate: GQL.TagCreateInput = createInput ?? { name: t.name };
+    const toCreate: GQL.TagCreateInput = createInput ?? {
+      name: t.name,
+      description: t.description ?? undefined,
+      aliases: t.alias_list?.filter((a) => a) ?? undefined,
+    };
 
     // If the tag has a remote_site_id and we have an endpoint, include the stash_id
     const endpoint = currentSource?.sourceInput.stash_box_endpoint;
@@ -680,16 +674,20 @@ const StashSearchResult: React.FC<IStashSearchResultProps> = ({
   };
 
   const maybeRenderStashBoxID = () => {
-    if (scene.remote_site_id && stashBoxURL) {
+    if (scene.remote_site_id && currentSource?.sourceInput.stash_box_endpoint) {
       return (
         <div className="scene-details">
           <OptionalField
             exclude={excludedFields[fields.stash_ids]}
             setExclude={(v) => setExcludedField(fields.stash_ids, v)}
           >
-            <ExternalLink href={stashBoxURL}>
-              {scene.remote_site_id}
-            </ExternalLink>
+            <StashIDPill
+              linkType="scenes"
+              stashID={{
+                endpoint: currentSource?.sourceInput.stash_box_endpoint,
+                stash_id: scene.remote_site_id,
+              }}
+            />
           </OptionalField>
         </div>
       );
@@ -904,9 +902,9 @@ export const SceneSearchResults: React.FC<ISceneSearchResults> = ({
   return (
     <ul className="pl-0 mt-3 mb-0">
       {scenes.map((s, i) => (
-        // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions, react/no-array-index-key
+        // XXbiome-ignore jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions, react/no-array-index-key: intentional
         <li
-          // eslint-disable-next-line react/no-array-index-key
+          // XXbiome-ignore react/no-array-index-key: intentional
           key={i}
           onClick={() => setSelectedResult(i)}
           className={getClassName(i)}

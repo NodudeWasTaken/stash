@@ -31,7 +31,7 @@ Some examples:
 - `"^/stash/videos/exclude/"` will exclude all directories that match `/stash/videos/exclude/` pattern.
 - `"\\\\stash\\network\\share\\excl\\"` will exclude specific Windows network path `\\stash\network\share\excl\`.
 
-> **Note:** If a directory is excluded for images and videos, then the directory will be excluded from scans completely.
+> **⚠️ Note:** If a directory is excluded for images and videos, then the directory will be excluded from scans completely.
 
 _There is a useful [regex101](https://regex101.com/) site that can help test and experiment with regexps._
 
@@ -87,7 +87,37 @@ This setting can be used to increase/decrease overall CPU utilisation in two sce
 1. High performance 4+ core cpus.
 2. Media files stored on remote/cloud filesystem.
 
-Note: If this is set too high it will decrease overall performance and causes failures (out of memory).
+> **⚠️ Note:** If this is set too high it will decrease overall performance and causes failures (out of memory).
+
+## Sprite generation
+
+### Sprite size
+
+Fixed size of a generated sprite, being the longest dimension in pixels. 
+Setting this to `0` will fallback to the default of `160`.
+Althought it is possible to set this value to anything bigger than `0` it is recommended to set it to `160` at least.
+
+### Use custom sprite generation
+
+If this setting is disabled, the settings below will be ignored and the default sprite generation settings are used.
+
+### Sprite interval
+
+This represents the time in seconds between each sprite to be generated. This value will be adjusted if necessary to fit within the bounds of the `Minimum Sprites` and `Maximum Sprites` settings.
+
+Setting this to `0` means that the sprite interval will be calculated based on the value of the `Minimum Sprites` field.
+
+### Minimum sprites
+
+The minimal number of distinct sprites that will be generated for a scene. `Sprite interval` will be adjusted if necessary.
+Setting this to `0` will fallback to the default of `10`
+
+### Maximum sprites
+
+The maximum number of distinct sprites that will be generated for a scene. `Sprite interval` will be adjusted if necessary.
+Setting this to `0` indicates there is no maximum.
+
+> **⚠️ Note:** The number of generated sprites is adjusted upwards to the next perfect square to ensure the sprite image is completely filled (no empty space in the grid) and the grid is as square as possible (minimizing the number of rows/columns). This means that if you set a minimum of 10 sprites, 16 will actually be generated, and if you set a maximum of 15 sprites, 16 will actually be generated.
 
 ## Hardware accelerated live transcoding
 
@@ -117,7 +147,7 @@ Some scrapers require a Chrome instance to function correctly. If left empty, st
 
 `Chrome CDP path` can be set to a path to the chrome executable, or an http(s) address to remote chrome instance (for example: `http://localhost:9222/json/version`).
 
-> **Important**: As of Chrome 136 you need to specify `--user-data-dir` alongside `--remote-debugging-port`. Read more on their [official post](https://developer.chrome.com/blog/remote-debugging-port). 
+> **⚠️ Important:** As of Chrome 136 you need to specify `--user-data-dir` alongside `--remote-debugging-port`. Read more on their [official post](https://developer.chrome.com/blog/remote-debugging-port). 
 
 ## Authentication
 
@@ -158,12 +188,17 @@ These options are typically not exposed in the UI and must be changed manually i
 | `proxy` | The url of a HTTP(S) proxy to be used when stash makes calls to online services. Example: https://user:password@my.proxy:8080. Note: SOCKS5 proxies are unsupported. |
 | `no_proxy` | A list of domains for which the proxy must not be used. Default is all local LAN: localhost,127.0.0.1,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12 |
 | `sequential_scanning` | Modifies behaviour of the scanning functionality to generate support files (previews/sprites/phash) at the same time as fingerprinting/screenshotting. Useful when scanning cached remote files. |
+| `trusted_proxies` | A list of trusted proxy IPs or CIDR ranges. If a request comes from a trusted proxy or if the request IP address is a local address, the `X-FORWARDED-FOR` header will be used to determine the client's real IP address. Default is empty (no trusted proxies). |
+| `public_whitelist` | A list of public IP addresses or subnets (in CIDR range format eg: `192.168.1.0/24`) that are allowed to access the system when no credentials are configured. |
+| `signed_url_expiry` | The expiry time for signed URLs, in seconds. Signed URLs are used when authentication is required. Defaults to 4 hours to accommodate long video playback sessions. |
 
 The following environment variables are also supported:
 
 | Environment variable | Remarks |
 |----------------------|---------|
 | `STASH_SQLITE_CACHE_SIZE` | Sets the SQLite cache size. See https://www.sqlite.org/pragma.html#pragma_cache_size. Default is `-2000` which is 2MB. |
+| `STASH_HW_TEST_TIMEOUT` | Sets the Hardware Acceleration test timeout in seconds. Default is 10 seconds
+| `STASH_HW_DRI_DEVICE` | Overrides the default `/dev/dri` device used for VAAPI hardware acceleration. Default is `/dev/dri/renderD128`
 
 ### Custom favicon
 

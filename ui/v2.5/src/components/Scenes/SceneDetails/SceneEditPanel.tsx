@@ -50,6 +50,11 @@ import { Group } from "src/components/Groups/GroupSelect";
 import { useTagsEdit } from "src/hooks/tagsEdit";
 import { ScraperMenu } from "src/components/Shared/ScraperMenu";
 import StashBoxIDSearchModal from "src/components/Shared/StashBoxIDSearchModal";
+import {
+  CustomFieldsInput,
+  formatCustomFieldInput,
+} from "src/components/Shared/CustomFields";
+import cloneDeep from "lodash-es/cloneDeep";
 
 const SceneScrapeDialog = lazyComponent(() => import("./SceneScrapeDialog"));
 const SceneQueryModal = lazyComponent(() => import("./SceneQueryModal"));
@@ -80,8 +85,22 @@ export const SceneEditPanel: React.FC<IProps> = ({
   const [studio, setStudio] = useState<Studio | null>(null);
 
   const Scrapers = useListSceneScrapers();
-  const [fragmentScrapers, setFragmentScrapers] = useState<GQL.Scraper[]>([]);
-  const [queryableScrapers, setQueryableScrapers] = useState<GQL.Scraper[]>([]);
+
+  const fragmentScrapers: GQL.Scraper[] = useMemo(() => {
+    return (
+      Scrapers?.data?.listScrapers?.filter((s) =>
+        s.scene?.supported_scrapes.includes(GQL.ScrapeType.Fragment)
+      ) ?? []
+    );
+  }, [Scrapers.data?.listScrapers]);
+
+  const queryableScrapers: GQL.Scraper[] = useMemo(() => {
+    return (
+      Scrapers?.data?.listScrapers?.filter((s) =>
+        s.scene?.supported_scrapes.includes(GQL.ScrapeType.Name)
+      ) ?? []
+    );
+  }, [Scrapers.data?.listScrapers]);
 
   const [scraper, setScraper] = useState<GQL.ScraperSourceInput>();
   const [isScraperQueryModalOpen, setIsScraperQueryModalOpen] =
@@ -140,6 +159,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     stash_ids: yup.mixed<GQL.StashIdInput[]>().defined(),
     details: yup.string().ensure(),
     cover_image: yup.string().nullable().optional(),
+    custom_fields: yup.object().required().defined(),
   });
 
   const initialValues = useMemo(
@@ -159,17 +179,28 @@ export const SceneEditPanel: React.FC<IProps> = ({
       stash_ids: getStashIDs(scene.stash_ids),
       details: scene.details ?? "",
       cover_image: initialCoverImage,
+      custom_fields: cloneDeep(scene.custom_fields ?? {}),
     }),
     [scene, initialCoverImage]
   );
 
   type InputValues = yup.InferType<typeof schema>;
 
+  const [customFieldsError, setCustomFieldsError] = useState<string>();
+
+  function submit(values: InputValues) {
+    const input = {
+      ...schema.cast(values),
+      custom_fields: formatCustomFieldInput(isNew, values.custom_fields),
+    };
+    onSave(input);
+  }
+
   const formik = useFormik<InputValues>({
     initialValues,
     enableReinitialize: true,
     validate: yupFormikValidate(schema),
-    onSubmit: (values) => onSave(schema.cast(values)),
+    onSubmit: submit,
   });
 
   const { tags, updateTagsStateFromScraper, tagsControl } = useTagsEdit(
@@ -242,20 +273,6 @@ export const SceneEditPanel: React.FC<IProps> = ({
     }
   });
 
-  useEffect(() => {
-    const toFilter = Scrapers?.data?.listScrapers ?? [];
-
-    const newFragmentScrapers = toFilter.filter((s) =>
-      s.scene?.supported_scrapes.includes(GQL.ScrapeType.Fragment)
-    );
-    const newQueryableScrapers = toFilter.filter((s) =>
-      s.scene?.supported_scrapes.includes(GQL.ScrapeType.Name)
-    );
-
-    setFragmentScrapers(newFragmentScrapers);
-    setQueryableScrapers(newQueryableScrapers);
-  }, [Scrapers, stashConfig]);
-
   function onSetGroups(items: Group[]) {
     setGroups(items);
 
@@ -288,7 +305,10 @@ export const SceneEditPanel: React.FC<IProps> = ({
   }
 
   async function onSaveAndNewClick() {
-    const input = schema.cast(formik.values);
+    const input = {
+      ...schema.cast(formik.values),
+      custom_fields: formatCustomFieldInput(isNew, formik.values.custom_fields),
+    };
     onSave(input, true);
   }
 
@@ -310,7 +330,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     setIsLoading(true);
     try {
       const result = await queryScrapeScene(s, scene.id!);
-      if (!result.data || !result.data.scrapeSingleScene?.length) {
+      if (!result.data?.scrapeSingleScene?.length) {
         Toast.success("No scenes found");
         return;
       }
@@ -341,7 +361,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
       };
 
       const result = await queryScrapeSceneQueryFragment(s, input);
-      if (!result.data || !result.data.scrapeSingleScene?.length) {
+      if (!result.data?.scrapeSingleScene?.length) {
         Toast.success("No scenes found");
         return;
       }
@@ -468,7 +488,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
       formik.setFieldValue("urls", updatedScene.urls);
     }
 
-    if (updatedScene.studio && updatedScene.studio.stored_id) {
+    if (updatedScene.studio?.stored_id) {
       onSetStudio({
         id: updatedScene.studio.stored_id,
         name: updatedScene.studio.name ?? "",
@@ -556,7 +576,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     setIsLoading(true);
     try {
       const result = await queryScrapeSceneURL(url);
-      if (!result.data || !result.data.scrapeSceneURL) {
+      if (!result.data?.scrapeSceneURL) {
         return;
       }
       setScrapedScene(result.data.scrapeSceneURL);
@@ -669,7 +689,7 @@ export const SceneEditPanel: React.FC<IProps> = ({
     const date = (() => {
       try {
         return schema.validateSyncAt("date", formik.values);
-      } catch (e) {
+      } catch (_e) {
         return undefined;
       }
     })();
@@ -759,7 +779,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 id="scene-save-split-button"
                 className="edit-button"
                 variant="primary"
-                disabled={!isEqual(formik.errors, {})}
+                disabled={
+                  !isEqual(formik.errors, {}) || customFieldsError !== undefined
+                }
                 title={intl.formatMessage({ id: "actions.save" })}
                 onClick={() => formik.submitForm()}
               >
@@ -772,7 +794,9 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 className="edit-button"
                 variant="primary"
                 disabled={
-                  (!isNew && !formik.dirty) || !isEqual(formik.errors, {})
+                  (!isNew && !formik.dirty) ||
+                  !isEqual(formik.errors, {}) ||
+                  customFieldsError !== undefined
                 }
                 onClick={() => formik.submitForm()}
               >
@@ -863,6 +887,13 @@ export const SceneEditPanel: React.FC<IProps> = ({
                 onReset={scene.id ? onResetCover : undefined}
               />
             </Form.Group>
+
+            <CustomFieldsInput
+              values={formik.values.custom_fields}
+              onChange={(v) => formik.setFieldValue("custom_fields", v)}
+              error={customFieldsError}
+              setError={(e) => setCustomFieldsError(e)}
+            />
           </Col>
         </Row>
       </Form>

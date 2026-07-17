@@ -2,6 +2,9 @@ import lodashIsEqual from "lodash-es/isEqual";
 import clone from "lodash-es/clone";
 import { IHasStoredID } from "src/utils/data";
 
+// biome-ignore lint/suspicious/noExplicitAny: don't know how to type this
+export type CustomFieldScrapeResults = Map<string, ZeroableScrapeResult<any>>;
+
 export class ScrapeResult<T> {
   public newValue?: T;
   public originalValue?: T;
@@ -95,7 +98,7 @@ function storedIDsEqual<T extends IHasStoredID>(
 }
 
 export class ObjectListScrapeResult<
-  T extends IHasStoredID
+  T extends IHasStoredID,
 > extends ScrapeResult<T[]> {
   public constructor(
     originalValue?: T[] | null,
@@ -107,7 +110,7 @@ export class ObjectListScrapeResult<
 }
 
 export class ObjectScrapeResult<
-  T extends IHasStoredID
+  T extends IHasStoredID,
 > extends ScrapeResult<T> {
   public constructor(
     originalValue?: T | null,
