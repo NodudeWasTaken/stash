@@ -7,11 +7,13 @@ import (
 )
 
 type TagStore interface {
+	customFieldsStore
+
 	All(ctx context.Context) ([]*models.Tag, error)
 	Count(ctx context.Context) (int, error)
 	CountByChildTagID(ctx context.Context, childID int) (int, error)
 	CountByParentTagID(ctx context.Context, parentID int) (int, error)
-	Create(ctx context.Context, newObject *models.Tag) error
+	Create(ctx context.Context, newObject *models.CreateTagInput) error
 	Destroy(ctx context.Context, id int) error
 	Find(ctx context.Context, id int) (*models.Tag, error)
 	FindAllAncestors(ctx context.Context, tagID int, excludeIDs []int) ([]*models.TagPath, error)
@@ -29,6 +31,8 @@ type TagStore interface {
 	FindByStudioID(ctx context.Context, studioID int) ([]*models.Tag, error)
 	FindByStashID(ctx context.Context, stashID models.StashID) ([]*models.Tag, error)
 	FindMany(ctx context.Context, ids []int) ([]*models.Tag, error)
+	FindByAlias(ctx context.Context, alias string, nocase bool) (*models.Tag, error)
+	FindByStashIDStatus(ctx context.Context, hasStashID bool, stashboxEndpoint string) ([]*models.Tag, error)
 	GetAliases(ctx context.Context, tagID int) ([]string, error)
 	GetChildIDs(ctx context.Context, relatedID int) ([]int, error)
 	GetImage(ctx context.Context, tagID int) ([]byte, error)
@@ -37,7 +41,7 @@ type TagStore interface {
 	Merge(ctx context.Context, source []int, destination int) error
 	Query(ctx context.Context, tagFilter *models.TagFilterType, findFilter *models.FindFilterType) ([]*models.Tag, int, error)
 	QueryForAutoTag(ctx context.Context, words []string) ([]*models.Tag, error)
-	Update(ctx context.Context, updatedObject *models.Tag) error
+	Update(ctx context.Context, updatedObject *models.UpdateTagInput) error
 	UpdateAliases(ctx context.Context, tagID int, aliases []string) error
 	UpdateChildTags(ctx context.Context, tagID int, childIDs []int) error
 	UpdateImage(ctx context.Context, tagID int, image []byte) error

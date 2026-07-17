@@ -169,7 +169,7 @@ func (qb *sceneFilterHandler) criterionHandler() criterionHandler {
 					"scene_last_view",
 					fmt.Sprintf("scene_last_view.%s = scenes.id", sceneIDColumn),
 				)
-				h := timestampCriterionHandler{sceneFilter.LastPlayedAt, "IFNULL(last_played_at, datetime(0))", nil}
+				h := timestampCriterionHandler{sceneFilter.LastPlayedAt, "COALESCE(last_played_at, to_timestamp(0))", nil}
 				h.handle(ctx, f)
 			}
 		}),
@@ -644,42 +644,5 @@ func (qb *sceneFilterHandler) performerTagsCriterionHandler(tags *models.Hierarc
 		primaryTable:   sceneTable,
 		joinTable:      performersScenesTable,
 		joinPrimaryKey: sceneIDColumn,
-	}
-}
-
-func (qb *sceneFilterHandler) phashDistanceCriterionHandler(phashDistance *models.PhashDistanceCriterionInput) criterionHandlerFunc {
-	return func(ctx context.Context, f *filterBuilder) {
-		if phashDistance != nil {
-			qb.addSceneFilesTable(f)
-			f.addLeftJoin(fingerprintTable, "fingerprints_phash", "scenes_files.file_id = fingerprints_phash.file_id AND fingerprints_phash.type = 'phash'")
-
-			value, _ := utils.StringToPhash(phashDistance.Value)
-			distance := 0
-			if phashDistance.Distance != nil {
-				distance = *phashDistance.Distance
-			}
-
-			if distance == 0 {
-				// use the default handler
-				intCriterionHandler(&models.IntCriterionInput{
-					Value:    int(value),
-					Modifier: phashDistance.Modifier,
-				}, "CAST(fingerprints_phash.fingerprint AS bigint)", nil)(ctx, f)
-			}
-
-			switch {
-			case phashDistance.Modifier == models.CriterionModifierEquals && distance > 0:
-				// needed to avoid a type mismatch
-				f.addWhere("phash_distance(CAST(fingerprints_phash.fingerprint AS bigint), ?) < ?", value, distance)
-			case phashDistance.Modifier == models.CriterionModifierNotEquals && distance > 0:
-				// needed to avoid a type mismatch
-				f.addWhere("phash_distance(CAST(fingerprints_phash.fingerprint AS bigint), ?) > ?", value, distance)
-			default:
-				intCriterionHandler(&models.IntCriterionInput{
-					Value:    int(value),
-					Modifier: phashDistance.Modifier,
-				}, "CAST(fingerprints_phash.fingerprint AS bigint)", nil)(ctx, f)
-			}
-		}
 	}
 }

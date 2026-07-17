@@ -7,6 +7,8 @@ import (
 )
 
 type GroupStore interface {
+	customFieldsStore
+
 	All(ctx context.Context) ([]*models.Group, error)
 	Count(ctx context.Context) (int, error)
 	CountByPerformerID(ctx context.Context, performerID int) (int, error)

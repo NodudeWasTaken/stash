@@ -1,0 +1,59 @@
+# Builds Stash (postgres fork, synced with upstream develop) from THIS local
+# source tree instead of cloning GitHub. Used by the stash-test compose stack:
+#   docker compose build  (with build.context pointing at this directory)
+
+# ── Stage 1: Build frontend ────────────────────────────────────────────────────
+FROM node:20-alpine AS ui-build
+
+WORKDIR /src
+COPY . .
+
+WORKDIR /src/ui/v2.5
+RUN yarn install --network-timeout 600000 --frozen-lockfile
+
+# Generate GraphQL TypeScript types (script is "gqlgen" in this repo)
+RUN yarn gqlgen
+RUN yarn build
+
+# ── Stage 2: Build Go backend ──────────────────────────────────────────────────
+FROM golang:1.25-alpine AS go-build
+
+RUN apk add --no-cache git gcc musl-dev sqlite-dev
+
+WORKDIR /src
+COPY --from=ui-build /src .
+
+ENV CGO_ENABLED=1
+ENV GOOS=linux
+
+RUN go mod download
+
+# Generate Go code from GraphQL schema (creates resolver interfaces)
+RUN go generate ./...
+
+# Fix bug in dataloaden-generated files: duplicate "time" import
+RUN for f in internal/api/loaders/*_gen.go; do \
+      awk '/^\t"time"$/{if(++n>1)next}1' "$f" > /tmp/fixed && mv /tmp/fixed "$f"; \
+    done
+
+# Build the binary (embeds the UI from ui/v2.5/build/)
+RUN go build -v \
+    -ldflags="-s -w -X 'github.com/stashapp/stash/internal/build.buildstamp=postgres-local' -X 'github.com/stashapp/stash/internal/build.githash=postgres-develop-sync'" \
+    -o /usr/bin/stash \
+    ./cmd/stash
+
+# ── Stage 3: Runtime ───────────────────────────────────────────────────────────
+FROM alpine:3.19
+
+RUN apk add --no-cache \
+    ffmpeg \
+    python3 \
+    ruby \
+    sqlite-libs \
+    ca-certificates \
+    tzdata
+
+COPY --from=go-build /usr/bin/stash /usr/bin/stash
+
+EXPOSE 9998
+ENTRYPOINT ["/usr/bin/stash"]

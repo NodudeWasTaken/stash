@@ -7,13 +7,15 @@ import (
 )
 
 type ImageStore interface {
+	customFieldsStore
+
 	AddFileID(ctx context.Context, id int, fileID models.FileID) error
 	All(ctx context.Context) ([]*models.Image, error)
 	Count(ctx context.Context) (int, error)
 	CountByFileID(ctx context.Context, fileID models.FileID) (int, error)
 	CountByGalleryID(ctx context.Context, galleryID int) (int, error)
 	CoverByGalleryID(ctx context.Context, galleryID int) (*models.Image, error)
-	Create(ctx context.Context, newObject *models.Image, fileIDs []models.FileID) error
+	Create(ctx context.Context, newObject *models.CreateImageInput) error
 	Destroy(ctx context.Context, id int) error
 	Find(ctx context.Context, id int) (*models.Image, error)
 	FindByChecksum(ctx context.Context, checksum string) ([]*models.Image, error)
@@ -24,6 +26,7 @@ type ImageStore interface {
 	FindByGalleryIDIndex(ctx context.Context, galleryID int, index uint) (*models.Image, error)
 	FindByZipFileID(ctx context.Context, zipFileID models.FileID) ([]*models.Image, error)
 	FindMany(ctx context.Context, ids []int) ([]*models.Image, error)
+	GetManyIDsByFileIDs(ctx context.Context, fileIDs []models.FileID) ([][]int, error)
 	GetFiles(ctx context.Context, id int) ([]models.File, error)
 	GetGalleryIDs(ctx context.Context, imageID int) ([]int, error)
 	GetManyFileIDs(ctx context.Context, ids []int) ([][]models.FileID, error)
@@ -40,7 +43,7 @@ type ImageStore interface {
 	UpdatePartial(ctx context.Context, id int, partial models.ImagePartial) (*models.Image, error)
 	UpdatePerformers(ctx context.Context, imageID int, performerIDs []int) error
 	UpdateTags(ctx context.Context, imageID int, tagIDs []int) error
-	OCountByStudioID(ctx context.Context, studioID int) (int, error)
+	OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error)
 	OCountStore
 }
 

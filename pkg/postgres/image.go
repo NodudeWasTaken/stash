@@ -987,7 +987,7 @@ COALESCE(
 	// Execute aggregate query
 	var obj *RowsWithCounts
 	var err error
-	if obj, err = sceneRepository.runIdsWithCount(ctx, query.toSQL(includeSortPagination), query.args); err != nil {
+	if obj, err = sceneRepository.runIdsWithCount(ctx, query.toSQL(includeSortPagination), query.allArgs()); err != nil {
 		return nil, err
 	}
 
