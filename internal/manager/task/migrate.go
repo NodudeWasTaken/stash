@@ -36,6 +36,13 @@ type databaseSchemaInfo struct {
 func (s *MigrateJob) PreExecute() error {
 	// ensure backup directory exists and is writable
 	backupDir := s.Config.GetBackupDirectoryPathOrDefault()
+
+	// backends without file backups (postgres) return an empty backup path;
+	// don't try to create a directory derived from the database URL
+	if s.Database.DatabaseBackupPath(backupDir) == "" {
+		return nil
+	}
+
 	if backupDir != "" {
 		if err := fsutil.EnsureDir(backupDir); err != nil {
 			logger.Errorf("error ensuring backup directory exists: %s", err)

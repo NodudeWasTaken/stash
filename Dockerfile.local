@@ -8,12 +8,15 @@ FROM node:20-alpine AS ui-build
 WORKDIR /src
 COPY . .
 
-WORKDIR /src/ui/v2.5
-RUN yarn install --network-timeout 600000 --frozen-lockfile
+# upstream switched the UI toolchain to pnpm (pinned via packageManager)
+RUN corepack enable
 
-# Generate GraphQL TypeScript types (script is "gqlgen" in this repo)
-RUN yarn gqlgen
-RUN yarn build
+WORKDIR /src/ui/v2.5
+RUN pnpm install --frozen-lockfile
+
+# Generate GraphQL TypeScript types
+RUN pnpm run gqlgen
+RUN pnpm run build
 
 # ── Stage 2: Build Go backend ──────────────────────────────────────────────────
 FROM golang:1.25-alpine AS go-build
