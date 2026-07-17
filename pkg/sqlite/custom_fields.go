@@ -144,7 +144,7 @@ func (s *customFieldsStore) setCustomFields(ctx context.Context, id int, values 
 	conflictKey := s.fk.GetCol().(string) + ", field"
 	// upsert new custom fields
 	q := dialect.Insert(s.table).Prepared(true).Cols(s.fk, "field", "value", "type").
-		OnConflict(goqu.DoUpdate(conflictKey, goqu.Record{"value": goqu.I("excluded.value")}))
+		OnConflict(goqu.DoUpdate(conflictKey, goqu.Record{"value": goqu.I("excluded.value"), "type": goqu.I("excluded.type")}))
 	r := make([]interface{}, len(values))
 	var i int
 	for key, value := range values {

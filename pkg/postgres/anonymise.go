@@ -89,6 +89,14 @@ func (db *Anonymiser) FetchAll(ctx context.Context) error {
 		goqu.I("tag_stash_ids"),
 		goqu.I(videoCaptionsTable),
 		goqu.I(videoFileTable),
+		// custom field tables last so their parent rows already exist
+		performersCustomFieldsTable,
+		scenesCustomFieldsTable,
+		imagesCustomFieldsTable,
+		galleriesCustomFieldsTable,
+		studiosCustomFieldsTable,
+		groupsCustomFieldsTable,
+		tagsCustomFieldsTable,
 	} {
 		offset := 0
 		for {
