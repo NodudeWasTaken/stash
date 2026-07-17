@@ -13,6 +13,7 @@ import (
 	"github.com/stashapp/stash/pkg/file"
 
 	// Necessary to register custom migrations.
+	_ "github.com/stashapp/stash/pkg/postgres/migrations"
 	_ "github.com/stashapp/stash/pkg/sqlite/migrations"
 )
 

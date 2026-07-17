@@ -29,6 +29,7 @@ import (
 	"github.com/stashapp/stash/pkg/session"
 
 	// register custom migrations
+	_ "github.com/stashapp/stash/pkg/postgres/migrations"
 	_ "github.com/stashapp/stash/pkg/sqlite/migrations"
 )
 
