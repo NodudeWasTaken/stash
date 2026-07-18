@@ -131,6 +131,7 @@ var (
 
 type GroupStore struct {
 	blobJoinQueryBuilder
+	customFieldsStore
 	tagRelationshipStore
 	groupRelationshipStore
 
@@ -142,6 +143,10 @@ func NewGroupStore(blobStore *BlobStore) *GroupStore {
 		blobJoinQueryBuilder: blobJoinQueryBuilder{
 			blobStore: blobStore,
 			joinTable: groupTable,
+		},
+		customFieldsStore: customFieldsStore{
+			table: groupsCustomFieldsTable,
+			fk:    groupsCustomFieldsTable.Col(groupIDColumn),
 		},
 		tagRelationshipStore: tagRelationshipStore{
 			idRelationshipStore: idRelationshipStore{
@@ -232,6 +237,10 @@ func (qb *GroupStore) UpdatePartial(ctx context.Context, id int, partial models.
 	}
 
 	if err := qb.groupRelationshipStore.modifySubRelationships(ctx, id, partial.SubGroups); err != nil {
+		return nil, err
+	}
+
+	if err := qb.SetCustomFields(ctx, id, partial.CustomFields); err != nil {
 		return nil, err
 	}
 
@@ -495,6 +504,7 @@ var groupSortOptions = sortOptions{
 	"rating",
 	"scenes_count",
 	"o_counter",
+	"sub_group_description",
 	"sub_group_order",
 	"tag_count",
 	"updated_at",
@@ -530,6 +540,17 @@ func (qb *GroupStore) setGroupSort(query *queryBuilder, findFilter *models.FindF
 			add, agg := getSort("order_index", direction, groupRelationsTable)
 			query.sort += add
 			query.addGroupBy(agg...)
+		}
+	case "sub_group_description":
+		// as above, we need to handle parent groups differently here
+		const clause = " ORDER BY COALESCE(%s.description, '') COLLATE NATURAL_CI %s"
+		if query.hasJoin("groups_parents") {
+			query.sort += fmt.Sprintf(clause, "groups_parents", direction)
+			query.addGroupBy("groups_parents.description")
+		} else {
+			query.joinSort(groupRelationsTable, "", "groups.id = groups_relations.sub_id")
+			query.sort += fmt.Sprintf(clause, groupRelationsTable, direction)
+			query.addGroupBy(groupRelationsTable + ".description")
 		}
 	case "tag_count":
 		query.sort += getCountSort(groupTable, groupsTagsTable, groupIDColumn, direction)

@@ -205,25 +205,60 @@ func galleryInputFromGallery(gallery *models.Gallery) galleryInput {
 	return ret
 }
 
+type imageInput struct {
+	ID      string   `json:"id"`
+	Title   string   `json:"title"`
+	Urls    []string `json:"urls"`
+	Date    *string  `json:"date"`
+	Details string   `json:"details"`
+
+	Code         string `json:"code,omitempty"`
+	Photographer string `json:"photographer,omitempty"`
+
+	Files []fileInput `json:"files,omitempty"`
+}
+
+func imageInputFromImage(image *models.Image) imageInput {
+	dateToStringPtr := func(s *models.Date) *string {
+		if s != nil {
+			v := s.String()
+			return &v
+		}
+
+		return nil
+	}
+
+	// fallback to file basename if title is empty
+	title := image.GetTitle()
+	urls := image.URLs.List()
+
+	ret := imageInput{
+		ID:      strconv.Itoa(image.ID),
+		Title:   title,
+		Urls:    urls,
+		Details: image.Details,
+		Date:    dateToStringPtr(image.Date),
+
+		Code:         image.Code,
+		Photographer: image.Photographer,
+	}
+
+	for _, f := range image.Files.List() {
+		fi := fileInputFromFile(*f.Base())
+		ret.Files = append(ret.Files, fi)
+	}
+
+	return ret
+}
+
 var ErrScraperScript = errors.New("scraper script error")
 
 type scriptScraper struct {
-	scraper      scraperTypeConfig
-	config       config
+	definition   Definition
 	globalConfig GlobalConfig
 }
 
-func newScriptScraper(scraper scraperTypeConfig, config config, globalConfig GlobalConfig) *scriptScraper {
-	return &scriptScraper{
-		scraper:      scraper,
-		config:       config,
-		globalConfig: globalConfig,
-	}
-}
-
-func (s *scriptScraper) runScraperScript(ctx context.Context, inString string, out interface{}) error {
-	command := s.scraper.Script
-
+func (s *scriptScraper) runScraperScript(ctx context.Context, command []string, inString string, out interface{}) error {
 	var cmd *exec.Cmd
 	if python.IsPythonCommand(command[0]) {
 		pythonPath := s.globalConfig.GetPythonPath()
@@ -233,7 +268,7 @@ func (s *scriptScraper) runScraperScript(ctx context.Context, inString string, o
 			logger.Warnf("%s", err)
 		} else {
 			cmd = p.Command(ctx, command[1:])
-			envVariable, _ := filepath.Abs(filepath.Dir(filepath.Dir(s.config.path)))
+			envVariable, _ := filepath.Abs(filepath.Dir(filepath.Dir(s.definition.path)))
 			python.AppendPythonPath(cmd, envVariable)
 		}
 	}
@@ -243,7 +278,7 @@ func (s *scriptScraper) runScraperScript(ctx context.Context, inString string, o
 		cmd = stashExec.CommandContext(ctx, command[0], command[1:]...)
 	}
 
-	cmd.Dir = filepath.Dir(s.config.path)
+	cmd.Dir = filepath.Dir(s.definition.path)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -273,7 +308,7 @@ func (s *scriptScraper) runScraperScript(ctx context.Context, inString string, o
 		return errors.New("error running scraper script")
 	}
 
-	go handleScraperStderr(s.config.Name, stderr)
+	go handleScraperStderr(s.definition.Name, stderr)
 
 	logger.Debugf("Scraper script <%s> started", strings.Join(cmd.Args, " "))
 
@@ -312,7 +347,39 @@ func (s *scriptScraper) runScraperScript(ctx context.Context, inString string, o
 	return nil
 }
 
-func (s *scriptScraper) scrapeByName(ctx context.Context, name string, ty ScrapeContentType) ([]ScrapedContent, error) {
+func (s *scriptScraper) scrape(ctx context.Context, command []string, input string, ty ScrapeContentType) (ScrapedContent, error) {
+	switch ty {
+	case ScrapeContentTypePerformer:
+		var performer *models.ScrapedPerformer
+		err := s.runScraperScript(ctx, command, input, &performer)
+		return performer, err
+	case ScrapeContentTypeGallery:
+		var gallery *models.ScrapedGallery
+		err := s.runScraperScript(ctx, command, input, &gallery)
+		return gallery, err
+	case ScrapeContentTypeScene:
+		var scene *models.ScrapedScene
+		err := s.runScraperScript(ctx, command, input, &scene)
+		return scene, err
+	case ScrapeContentTypeMovie, ScrapeContentTypeGroup:
+		var movie *models.ScrapedMovie
+		err := s.runScraperScript(ctx, command, input, &movie)
+		return movie, err
+	case ScrapeContentTypeImage:
+		var image *models.ScrapedImage
+		err := s.runScraperScript(ctx, command, input, &image)
+		return image, err
+	}
+
+	return nil, ErrNotSupported
+}
+
+type scriptNameScraper struct {
+	scriptScraper
+	definition ByNameDefinition
+}
+
+func (s *scriptNameScraper) scrapeByName(ctx context.Context, name string, ty ScrapeContentType) ([]ScrapedContent, error) {
 	input := `{"name": "` + name + `"}`
 
 	var ret []ScrapedContent
@@ -320,7 +387,7 @@ func (s *scriptScraper) scrapeByName(ctx context.Context, name string, ty Scrape
 	switch ty {
 	case ScrapeContentTypePerformer:
 		var performers []models.ScrapedPerformer
-		err = s.runScraperScript(ctx, input, &performers)
+		err = s.runScraperScript(ctx, s.definition.Script, input, &performers)
 		if err == nil {
 			for _, p := range performers {
 				v := p
@@ -329,7 +396,7 @@ func (s *scriptScraper) scrapeByName(ctx context.Context, name string, ty Scrape
 		}
 	case ScrapeContentTypeScene:
 		var scenes []models.ScrapedScene
-		err = s.runScraperScript(ctx, input, &scenes)
+		err = s.runScraperScript(ctx, s.definition.Script, input, &scenes)
 		if err == nil {
 			for _, s := range scenes {
 				v := s
@@ -343,7 +410,21 @@ func (s *scriptScraper) scrapeByName(ctx context.Context, name string, ty Scrape
 	return ret, err
 }
 
-func (s *scriptScraper) scrapeByFragment(ctx context.Context, input Input) (ScrapedContent, error) {
+type scriptURLScraper struct {
+	scriptScraper
+	definition ByURLDefinition
+}
+
+func (s *scriptURLScraper) scrapeByURL(ctx context.Context, url string, ty ScrapeContentType) (ScrapedContent, error) {
+	return s.scrape(ctx, s.definition.Script, `{"url": "`+url+`"}`, ty)
+}
+
+type scriptFragmentScraper struct {
+	scriptScraper
+	definition ByFragmentDefinition
+}
+
+func (s *scriptFragmentScraper) scrapeByFragment(ctx context.Context, input Input) (ScrapedContent, error) {
 	var inString []byte
 	var err error
 	var ty ScrapeContentType
@@ -357,47 +438,19 @@ func (s *scriptScraper) scrapeByFragment(ctx context.Context, input Input) (Scra
 	case input.Scene != nil:
 		inString, err = json.Marshal(*input.Scene)
 		ty = ScrapeContentTypeScene
+	case input.Image != nil:
+		inString, err = json.Marshal(*input.Image)
+		ty = ScrapeContentTypeImage
 	}
 
 	if err != nil {
 		return nil, err
 	}
 
-	return s.scrape(ctx, string(inString), ty)
+	return s.scrape(ctx, s.definition.Script, string(inString), ty)
 }
 
-func (s *scriptScraper) scrapeByURL(ctx context.Context, url string, ty ScrapeContentType) (ScrapedContent, error) {
-	return s.scrape(ctx, `{"url": "`+url+`"}`, ty)
-}
-
-func (s *scriptScraper) scrape(ctx context.Context, input string, ty ScrapeContentType) (ScrapedContent, error) {
-	switch ty {
-	case ScrapeContentTypePerformer:
-		var performer *models.ScrapedPerformer
-		err := s.runScraperScript(ctx, input, &performer)
-		return performer, err
-	case ScrapeContentTypeGallery:
-		var gallery *models.ScrapedGallery
-		err := s.runScraperScript(ctx, input, &gallery)
-		return gallery, err
-	case ScrapeContentTypeScene:
-		var scene *models.ScrapedScene
-		err := s.runScraperScript(ctx, input, &scene)
-		return scene, err
-	case ScrapeContentTypeMovie, ScrapeContentTypeGroup:
-		var movie *models.ScrapedMovie
-		err := s.runScraperScript(ctx, input, &movie)
-		return movie, err
-	case ScrapeContentTypeImage:
-		var image *models.ScrapedImage
-		err := s.runScraperScript(ctx, input, &image)
-		return image, err
-	}
-
-	return nil, ErrNotSupported
-}
-
-func (s *scriptScraper) scrapeSceneByScene(ctx context.Context, scene *models.Scene) (*models.ScrapedScene, error) {
+func (s *scriptFragmentScraper) scrapeSceneByScene(ctx context.Context, scene *models.Scene) (*models.ScrapedScene, error) {
 	inString, err := json.Marshal(sceneInputFromScene(scene))
 
 	if err != nil {
@@ -406,12 +459,12 @@ func (s *scriptScraper) scrapeSceneByScene(ctx context.Context, scene *models.Sc
 
 	var ret *models.ScrapedScene
 
-	err = s.runScraperScript(ctx, string(inString), &ret)
+	err = s.runScraperScript(ctx, s.definition.Script, string(inString), &ret)
 
 	return ret, err
 }
 
-func (s *scriptScraper) scrapeGalleryByGallery(ctx context.Context, gallery *models.Gallery) (*models.ScrapedGallery, error) {
+func (s *scriptFragmentScraper) scrapeGalleryByGallery(ctx context.Context, gallery *models.Gallery) (*models.ScrapedGallery, error) {
 	inString, err := json.Marshal(galleryInputFromGallery(gallery))
 
 	if err != nil {
@@ -420,13 +473,13 @@ func (s *scriptScraper) scrapeGalleryByGallery(ctx context.Context, gallery *mod
 
 	var ret *models.ScrapedGallery
 
-	err = s.runScraperScript(ctx, string(inString), &ret)
+	err = s.runScraperScript(ctx, s.definition.Script, string(inString), &ret)
 
 	return ret, err
 }
 
-func (s *scriptScraper) scrapeImageByImage(ctx context.Context, image *models.Image) (*models.ScrapedImage, error) {
-	inString, err := json.Marshal(imageToUpdateInput(image))
+func (s *scriptFragmentScraper) scrapeImageByImage(ctx context.Context, image *models.Image) (*models.ScrapedImage, error) {
+	inString, err := json.Marshal(imageInputFromImage(image))
 
 	if err != nil {
 		return nil, err
@@ -434,7 +487,7 @@ func (s *scriptScraper) scrapeImageByImage(ctx context.Context, image *models.Im
 
 	var ret *models.ScrapedImage
 
-	err = s.runScraperScript(ctx, string(inString), &ret)
+	err = s.runScraperScript(ctx, s.definition.Script, string(inString), &ret)
 
 	return ret, err
 }

@@ -8,6 +8,7 @@ import {
 } from "src/core/StashService";
 import { withoutTypename } from "src/utils/data";
 import { useConfigurationContext } from "src/hooks/Config";
+import { useAutoTagTrigger } from "src/hooks/useAutoTagTrigger";
 import { IdentifyDialog } from "../../Dialogs/IdentifyDialog/IdentifyDialog";
 import * as GQL from "src/core/generated-graphql";
 import { DirectorySelectionDialog } from "./DirectorySelectionDialog";
@@ -19,6 +20,10 @@ import { BooleanSetting, Setting, SettingGroup } from "../Inputs";
 import { ManualLink } from "src/components/Help/context";
 import { Icon } from "src/components/Shared/Icon";
 import { faQuestionCircle } from "@fortawesome/free-solid-svg-icons";
+import {
+  AutoTagConfirmDialog,
+  AutoTagWarning,
+} from "src/components/Shared/AutoTagConfirmDialog";
 import { useSettings } from "../context";
 
 interface IAutoTagOptions {
@@ -78,7 +83,9 @@ export const LibraryTasks: React.FC = () => {
   const [dialogOpen, setDialogOpenState] = useState({
     scan: false,
     autoTag: false,
+    autoTagAlert: false,
     identify: false,
+    generate: false,
   });
 
   function getDefaultScanOptions(): GQL.ScanMetadataInput {
@@ -164,7 +171,7 @@ export const LibraryTasks: React.FC = () => {
     }
   }, [configuration, configRead, taskDefaults, loading]);
 
-  function configureDefaults(partial: Record<string, {}>) {
+  function configureDefaults(partial: Record<string, object>) {
     saveUI({ taskDefaults: { ...partial } });
   }
 
@@ -188,6 +195,12 @@ export const LibraryTasks: React.FC = () => {
       return { ...v, ...s };
     });
   }
+
+  const onAutoTagClick = useAutoTagTrigger(
+    () => runAutoTag(),
+    () => setDialogOpen({ autoTagAlert: true }),
+    ui.disableAutoTagWarning
+  );
 
   function renderScanDialog() {
     if (!dialogOpen.scan) {
@@ -223,12 +236,29 @@ export const LibraryTasks: React.FC = () => {
     }
   }
 
+  function renderAutoTagAlert() {
+    return (
+      <AutoTagConfirmDialog
+        show={dialogOpen.autoTagAlert}
+        onConfirm={() => {
+          setDialogOpen({ autoTagAlert: false });
+          runAutoTag();
+        }}
+        onCancel={() => setDialogOpen({ autoTagAlert: false })}
+      />
+    );
+  }
+
   function renderAutoTagDialog() {
     if (!dialogOpen.autoTag) {
       return;
     }
 
-    return <DirectorySelectionDialog onClose={onAutoTagDialogClosed} />;
+    return (
+      <DirectorySelectionDialog onClose={onAutoTagDialogClosed}>
+        <AutoTagWarning />
+      </DirectorySelectionDialog>
+    );
   }
 
   function onAutoTagDialogClosed(paths?: string[]) {
@@ -265,13 +295,29 @@ export const LibraryTasks: React.FC = () => {
     );
   }
 
-  async function onGenerateClicked() {
-    try {
-      // insert preview options here instead of loading them
-      const general = configuration?.general;
+  function renderGenerateDialog() {
+    if (!dialogOpen.generate) {
+      return;
+    }
 
+    return <DirectorySelectionDialog onClose={onGenerateDialogClosed} />;
+  }
+
+  function onGenerateDialogClosed(paths?: string[]) {
+    if (paths) {
+      runGenerate(paths);
+    }
+
+    setDialogOpen({ generate: false });
+  }
+
+  async function runGenerate(paths?: string[]) {
+    const general = configuration?.general;
+
+    try {
       await mutateMetadataGenerate({
         ...generateOptions,
+        paths,
         previewOptions: {
           ...generateOptions.previewOptions,
           previewSegments:
@@ -291,6 +337,7 @@ export const LibraryTasks: React.FC = () => {
             generateOptions.previewOptions?.previewPreset,
         },
       });
+
       Toast.success(
         intl.formatMessage(
           { id: "config.tasks.added_job_to_queue" },
@@ -305,8 +352,10 @@ export const LibraryTasks: React.FC = () => {
   return (
     <Form.Group>
       {renderScanDialog()}
+      {renderAutoTagAlert()}
       {renderAutoTagDialog()}
       {maybeRenderIdentifyDialog()}
+      {renderGenerateDialog()}
 
       <SettingSection headingID="library">
         <SettingGroup
@@ -389,9 +438,9 @@ export const LibraryTasks: React.FC = () => {
                 variant="secondary"
                 type="submit"
                 className="mr-2"
-                onClick={() => runAutoTag()}
+                onClick={onAutoTagClick}
               >
-                <FormattedMessage id="actions.auto_tag" />
+                <FormattedMessage id="actions.auto_tag" />…
               </Button>
               <Button
                 variant="secondary"
@@ -407,6 +456,13 @@ export const LibraryTasks: React.FC = () => {
           <AutoTagOptions
             options={autoTagOptions}
             setOptions={onSetAutoTagOptions}
+          />
+          <BooleanSetting
+            id="disable_auto_tag_warning"
+            headingID="config.tasks.auto_tag.disable_warning.heading"
+            subHeadingID="config.tasks.auto_tag.disable_warning.description"
+            checked={ui.disableAutoTagWarning ?? undefined}
+            onChange={(v) => saveUI({ disableAutoTagWarning: v })}
           />
         </SettingGroup>
       </SettingSection>
@@ -425,13 +481,23 @@ export const LibraryTasks: React.FC = () => {
             subHeadingID: "config.tasks.generate_desc",
           }}
           topLevel={
-            <Button
-              variant="secondary"
-              type="submit"
-              onClick={() => onGenerateClicked()}
-            >
-              <FormattedMessage id="actions.generate" />
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                type="submit"
+                onClick={() => runGenerate()}
+              >
+                <FormattedMessage id="actions.generate" />
+              </Button>
+              <Button
+                variant="secondary"
+                type="submit"
+                className="mr-2"
+                onClick={() => setDialogOpen({ generate: true })}
+              >
+                <FormattedMessage id="actions.selective_generate" />…
+              </Button>
+            </>
           }
           collapsible
         >

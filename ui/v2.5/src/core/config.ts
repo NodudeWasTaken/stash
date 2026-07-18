@@ -38,6 +38,7 @@ export type DefaultFilters = {
 export type FrontPageContent = ISavedFilterRow | ICustomFilter;
 
 export const defaultMaxOptionsShown = 200;
+export const defaultPreviewVolume = 25;
 
 export interface IUIConfig {
   // unknown to prevent direct access - use getFrontPageContent
@@ -47,6 +48,10 @@ export interface IUIConfig {
   showChildStudioContent?: boolean;
   showLinksOnPerformerCard?: boolean;
   showTagCardOnHover?: boolean;
+
+  showStudioText?: boolean;
+
+  previewVolume?: number;
 
   abbreviateCounters?: boolean;
 
@@ -67,6 +72,9 @@ export interface IUIConfig {
 
   // if true the chromecast option will enabled
   enableChromecast?: boolean;
+
+  // if true the slideshow autostarts when opening a gallery's lightbox from the galleries page
+  autostartGallerySlideshow?: boolean;
 
   // if true the fullscreen mobile media auto-rotate option will be disabled
   disableMobileMediaAutoRotateEnabled?: boolean;
@@ -95,10 +103,14 @@ export interface IUIConfig {
 
   pinnedFilters?: Record<string, string[]>;
   tableColumns?: Record<string, string[]>;
+  pinnedSortBy?: Record<string, string[]>;
 
   advancedMode?: boolean;
 
-  taskDefaults?: Record<string, {}>;
+  taskDefaults?: Record<string, object>;
+
+  // if true the auto tag confirmation warning is skipped
+  disableAutoTagWarning?: boolean;
 
   defaultFilters?: DefaultFilters;
 

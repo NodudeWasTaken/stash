@@ -23,13 +23,26 @@ type queryBuilder struct {
 	joins          joins
 	whereClauses   []string
 	havingClauses  []string
-	args           []interface{}
 	withClauses    []string
 	recursiveWith  bool
 	groupByClauses []string
 
+	withArgs   []interface{}
+	joinArgs   []interface{}
+	whereArgs  []interface{}
+	havingArgs []interface{}
+
 	sort       string
 	pagination *queryPagination
+}
+
+func (qb queryBuilder) allArgs() []interface{} {
+	var args []interface{}
+	args = append(args, qb.withArgs...)
+	args = append(args, qb.joinArgs...)
+	args = append(args, qb.whereArgs...)
+	args = append(args, qb.havingArgs...)
+	return args
 }
 
 func (qb queryBuilder) body(includeSortPagination bool) string {
@@ -72,7 +85,7 @@ func (qb queryBuilder) toSQL(includeSortPagination bool) string {
 func (qb queryBuilder) findIDs(ctx context.Context) ([]int, error) {
 	const includeSortPagination = true
 	sql := qb.toSQL(includeSortPagination)
-	return qb.repository.runIdsQuery(ctx, sql, qb.args)
+	return qb.repository.runIdsQuery(ctx, sql, qb.allArgs())
 }
 
 func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
@@ -86,7 +99,7 @@ func (qb queryBuilder) executeFind(ctx context.Context) ([]int, int, error) {
 	}
 
 	pagination := getPaginationSQL(qb.pagination)
-	return qb.repository.executeFindQuery(ctx, body, qb.args, qb.sort, pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
+	return qb.repository.executeFindQuery(ctx, body, qb.allArgs(), qb.sort, pagination, qb.whereClauses, qb.havingClauses, qb.withClauses, qb.groupByClauses, qb.recursiveWith)
 }
 
 func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
@@ -104,7 +117,7 @@ func (qb queryBuilder) executeCount(ctx context.Context) (int, error) {
 
 	body = qb.repository.buildQueryBody(body, qb.whereClauses, qb.havingClauses, qb.groupByClauses)
 	countQuery := withClause + qb.repository.buildCountQuery(body)
-	return qb.repository.runCountQuery(ctx, countQuery, qb.args)
+	return qb.repository.runCountQuery(ctx, countQuery, qb.allArgs())
 }
 
 func (qb *queryBuilder) addWhere(clauses ...string) {
@@ -134,7 +147,11 @@ func (qb *queryBuilder) addWith(recursive bool, clauses ...string) {
 }
 
 func (qb *queryBuilder) addArg(args ...interface{}) {
-	qb.args = append(qb.args, args...)
+	qb.whereArgs = append(qb.whereArgs, args...)
+}
+
+func (qb *queryBuilder) addHavingArg(args ...interface{}) {
+	qb.havingArgs = append(qb.havingArgs, args...)
 }
 
 func (qb *queryBuilder) hasJoin(alias string) bool {
@@ -173,7 +190,7 @@ func (qb *queryBuilder) joinSort(table, as, onClause string) {
 func (qb *queryBuilder) addJoins(joins ...join) {
 	for _, j := range joins {
 		if qb.joins.addUnique(j) {
-			qb.args = append(qb.args, j.args...)
+			qb.joinArgs = append(qb.joinArgs, j.args...)
 		}
 	}
 }
@@ -188,20 +205,16 @@ func (qb *queryBuilder) addFilter(f *filterBuilder) error {
 	if len(clause) > 0 {
 		qb.addWith(f.recursiveWith, clause)
 	}
-
 	if len(args) > 0 {
-		// WITH clause always comes first and thus precedes alk args
-		qb.args = append(args, qb.args...)
+		qb.withArgs = append(qb.withArgs, args...)
 	}
 
-	// add joins here to insert args
 	qb.addJoins(f.getAllJoins()...)
 
 	clause, args = f.generateWhereClauses()
 	if len(clause) > 0 {
 		qb.addWhere(clause)
 	}
-
 	if len(args) > 0 {
 		qb.addArg(args...)
 	}
@@ -210,9 +223,8 @@ func (qb *queryBuilder) addFilter(f *filterBuilder) error {
 	if len(clause) > 0 {
 		qb.addHaving(clause)
 	}
-
 	if len(args) > 0 {
-		qb.addArg(args...)
+		qb.addHavingArg(args...)
 	}
 
 	return nil

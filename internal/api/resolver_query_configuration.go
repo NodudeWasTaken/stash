@@ -25,7 +25,7 @@ func (r *queryResolver) Directory(ctx context.Context, path, locale *string) (*D
 
 	var dirPath = ""
 	if path != nil {
-		dirPath = *path
+		dirPath = strings.Trim(*path, "\"")
 	}
 	currentDir := getDir(dirPath)
 	directories, err := listDir(col, currentDir)
@@ -96,9 +96,16 @@ func makeConfigGeneralResult() *ConfigGeneralResult {
 		CalculateMd5:                  config.IsCalculateMD5(),
 		VideoFileNamingAlgorithm:      config.GetVideoFileNamingAlgorithm(),
 		ParallelTasks:                 config.GetParallelTasks(),
+		UseCustomSpriteInterval:       config.GetUseCustomSpriteInterval(),
+		SpriteInterval:                config.GetSpriteInterval(),
+		SpriteScreenshotSize:          config.GetSpriteScreenshotSize(),
+		MinimumSprites:                config.GetMinimumSprites(),
+		MaximumSprites:                config.GetMaximumSprites(),
 		PreviewAudio:                  config.GetPreviewAudio(),
 		PreviewSegments:               config.GetPreviewSegments(),
 		PreviewSegmentDuration:        config.GetPreviewSegmentDuration(),
+		MaxMarkerPreviewDuration:      config.GetMaxMarkerPreviewDuration(),
+		DefaultMarkerPreviewDuration:  config.GetDefaultMarkerPreviewDuration(),
 		PreviewExcludeStart:           config.GetPreviewExcludeStart(),
 		PreviewExcludeEnd:             config.GetPreviewExcludeEnd(),
 		PreviewPreset:                 config.GetPreviewPreset(),
@@ -156,6 +163,7 @@ func makeConfigInterfaceResult() *ConfigInterfaceResult {
 	javascriptEnabled := config.GetJavascriptEnabled()
 	customLocales := config.GetCustomLocales()
 	customLocalesEnabled := config.GetCustomLocalesEnabled()
+	disableCustomizations := config.GetDisableCustomizations()
 	language := config.GetLanguage()
 	handyKey := config.GetHandyKey()
 	scriptOffset := config.GetFunscriptOffset()
@@ -183,6 +191,7 @@ func makeConfigInterfaceResult() *ConfigInterfaceResult {
 		JavascriptEnabled:            &javascriptEnabled,
 		CustomLocales:                &customLocales,
 		CustomLocalesEnabled:         &customLocalesEnabled,
+		DisableCustomizations:        &disableCustomizations,
 		Language:                     &language,
 
 		ImageLightbox: &imageLightboxOptions,

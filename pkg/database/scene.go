@@ -8,6 +8,8 @@ import (
 )
 
 type SceneStore interface {
+	customFieldsStore
+
 	AddFileID(ctx context.Context, id int, fileID models.FileID) error
 	AddGalleryIDs(ctx context.Context, sceneID int, galleryIDs []int) error
 	All(ctx context.Context) ([]*models.Scene, error)
@@ -32,8 +34,9 @@ type SceneStore interface {
 	FindByPath(ctx context.Context, p string) ([]*models.Scene, error)
 	FindByPerformerID(ctx context.Context, performerID int) ([]*models.Scene, error)
 	FindByPrimaryFileID(ctx context.Context, fileID models.FileID) ([]*models.Scene, error)
-	FindDuplicates(ctx context.Context, distance int, durationDiff float64) ([][]*models.Scene, error)
+	FindDuplicates(ctx context.Context, distance int, durationDiff float64, filter *models.SceneFilterType) ([][]*models.Scene, error)
 	FindMany(ctx context.Context, ids []int) ([]*models.Scene, error)
+	GetManyIDsByFileIDs(ctx context.Context, fileIDs []models.FileID) ([][]int, error)
 	GetCover(ctx context.Context, sceneID int) ([]byte, error)
 	GetFiles(ctx context.Context, id int) ([]*models.VideoFile, error)
 	GetGalleryIDs(ctx context.Context, id int) ([]int, error)
@@ -56,7 +59,7 @@ type SceneStore interface {
 	UpdatePartial(ctx context.Context, id int, partial models.ScenePartial) (*models.Scene, error)
 	Wall(ctx context.Context, q *string) ([]*models.Scene, error)
 	OCountByGroupID(ctx context.Context, groupID int) (int, error)
-	OCountByStudioID(ctx context.Context, studioID int) (int, error)
+	OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error)
 	blobJoinQueryBuilder
 	oDateManager
 	viewDateManager

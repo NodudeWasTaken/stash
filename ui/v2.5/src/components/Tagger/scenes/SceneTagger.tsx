@@ -4,7 +4,6 @@ import { SceneQueue } from "src/models/sceneQueue";
 import { Button, Form } from "react-bootstrap";
 import { FormattedMessage, useIntl } from "react-intl";
 
-import { Icon } from "src/components/Shared/Icon";
 import { LoadingIndicator } from "src/components/Shared/LoadingIndicator";
 import { OperationButton } from "src/components/Shared/OperationButton";
 import { ISceneQueryResult, TaggerStateContext } from "../context";
@@ -13,8 +12,8 @@ import { TaggerScene } from "./TaggerScene";
 import { SceneTaggerModals } from "./sceneTaggerModals";
 import { SceneSearchResults } from "./StashSearchResult";
 import { useConfigurationContext } from "src/hooks/Config";
-import { faCog } from "@fortawesome/free-solid-svg-icons";
 import { useLightbox } from "src/hooks/Lightbox/hooks";
+import { ConfigButton } from "../TaggerConfig";
 
 const Scene: React.FC<{
   scene: GQL.SlimSceneDataFragment;
@@ -84,7 +83,7 @@ const Scene: React.FC<{
       selected={selected}
       onSelectedChanged={onSelectedChanged}
     >
-      {searchResult && searchResult.results?.length ? (
+      {searchResult?.results?.length ? (
         <SceneSearchResults scenes={searchResult.results} target={scene} />
       ) : undefined}
     </TaggerScene>
@@ -151,16 +150,6 @@ export const Tagger: React.FC<ITaggerProps> = ({
           </Form.Control>
         </div>
       </Form.Group>
-    );
-  }
-
-  function renderConfigButton() {
-    return (
-      <div className="ml-2">
-        <Button onClick={() => setShowConfig(!showConfig)}>
-          <Icon className="fa-fw" icon={faCog} />
-        </Button>
-      </div>
     );
   }
 
@@ -293,7 +282,12 @@ export const Tagger: React.FC<ITaggerProps> = ({
               {maybeRenderShowHideUnmatchedButton()}
               {maybeRenderSubmitFingerprintsButton()}
               {renderFragmentScrapeButton()}
-              {renderConfigButton()}
+              <div className="ml-2">
+                <ConfigButton
+                  showConfig={showConfig}
+                  onClick={() => setShowConfig(!showConfig)}
+                />
+              </div>
             </div>
           </div>
           <Config show={showConfig} />

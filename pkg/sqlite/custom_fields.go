@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -102,6 +103,17 @@ func (s *customFieldsStore) validateCustomFieldName(fieldName string) error {
 
 func getSQLValueFromCustomFieldInput(input interface{}) (interface{}, error) {
 	switch v := input.(type) {
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i, nil
+		}
+
+		f, err := v.Float64()
+		if err != nil {
+			return nil, fmt.Errorf("invalid custom field number %q: %w", v, err)
+		}
+
+		return f, nil
 	case []interface{}, map[string]interface{}:
 		// TODO - in future it would be nice to convert to a JSON string
 		// however, we would need some way to differentiate between a JSON string and a regular string
@@ -132,7 +144,7 @@ func (s *customFieldsStore) setCustomFields(ctx context.Context, id int, values 
 	conflictKey := s.fk.GetCol().(string) + ", field"
 	// upsert new custom fields
 	q := dialect.Insert(s.table).Prepared(true).Cols(s.fk, "field", "value", "type").
-		OnConflict(goqu.DoUpdate(conflictKey, goqu.Record{"value": goqu.I("excluded.value")}))
+		OnConflict(goqu.DoUpdate(conflictKey, goqu.Record{"value": goqu.I("excluded.value"), "type": goqu.I("excluded.type")}))
 	r := make([]interface{}, len(values))
 	var i int
 	for key, value := range values {
@@ -193,6 +205,10 @@ func (s *customFieldsStore) GetCustomFieldsBulk(ctx context.Context, ids []int) 
 
 	const single = false
 	ret := make([]models.CustomFieldMap, len(ids))
+	// initialise ret with empty maps for each id
+	for i := range ret {
+		ret[i] = make(map[string]interface{})
+	}
 
 	idi := make(map[int]int, len(ids))
 	for i, id := range ids {
@@ -258,8 +274,8 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("%[1]s.value IN %s", joinAs, getInBinding(len(cv))), cv...)
 	case models.CriterionModifierNotEquals:
-		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%[1]s.value NOT IN %s", joinAs, getInBinding(len(cv))), cv...)
+		h.leftJoin(f, joinAs, cc.Field)
+		f.addWhere(fmt.Sprintf("(%[1]s.value NOT IN %s OR %[1]s.value IS NULL)", joinAs, getInBinding(len(cv))), cv...)
 	case models.CriterionModifierIncludes:
 		clauses := make([]sqlClause, len(cv))
 		for i, v := range cv {
@@ -269,7 +285,7 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		f.whereClauses = append(f.whereClauses, clauses...)
 	case models.CriterionModifierExcludes:
 		for _, v := range cv {
-			f.addWhere(fmt.Sprintf("%[1]s.value NOT LIKE ?", joinAs), fmt.Sprintf("%%%v%%", v))
+			f.addWhere(fmt.Sprintf("(%[1]s.value NOT LIKE ? OR %[1]s.value IS NULL)", joinAs), fmt.Sprintf("%%%v%%", v))
 		}
 		h.leftJoin(f, joinAs, cc.Field)
 	case models.CriterionModifierMatchesRegex:
@@ -312,8 +328,8 @@ func (h *customFieldsFilterHandler) handleCriterion(f *filterBuilder, joinAs str
 		h.innerJoin(f, joinAs, cc.Field)
 		f.addWhere(fmt.Sprintf("%s.value BETWEEN ? AND ?", joinAs), cv[0], cv[1])
 	case models.CriterionModifierNotBetween:
-		h.innerJoin(f, joinAs, cc.Field)
-		f.addWhere(fmt.Sprintf("%s.value NOT BETWEEN ? AND ?", joinAs), cv[0], cv[1])
+		h.leftJoin(f, joinAs, cc.Field)
+		f.addWhere(fmt.Sprintf("(%s.value NOT BETWEEN ? AND ? OR %[1]s.value IS NULL)", joinAs), cv[0], cv[1])
 	case models.CriterionModifierLessThan:
 		if len(cv) != 1 {
 			f.setError(fmt.Errorf("expected 1 value for custom field criterion modifier LESS_THAN, got %d", len(cv)))

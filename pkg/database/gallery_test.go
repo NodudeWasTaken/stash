@@ -13,6 +13,7 @@ import (
 
 	"github.com/stashapp/stash/pkg/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var invalidID = -1
@@ -104,7 +105,7 @@ func Test_galleryQueryBuilder_Create(t *testing.T) {
 				CreatedAt:    createdAt,
 				UpdatedAt:    updatedAt,
 				SceneIDs:     models.NewRelatedIDs([]int{sceneIDs[sceneIdx1WithPerformer], sceneIDs[sceneIdx1WithStudio]}),
-				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithDupName], tagIDs[tagIdx1WithScene]}),
+				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithScene], tagIDs[tagIdx1WithNothing]}),
 				PerformerIDs: models.NewRelatedIDs([]int{performerIDs[performerIdx1WithScene], performerIDs[performerIdx1WithDupName]}),
 			},
 			false,
@@ -127,7 +128,7 @@ func Test_galleryQueryBuilder_Create(t *testing.T) {
 				CreatedAt:    createdAt,
 				UpdatedAt:    updatedAt,
 				SceneIDs:     models.NewRelatedIDs([]int{sceneIDs[sceneIdx1WithPerformer], sceneIDs[sceneIdx1WithStudio]}),
-				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithDupName], tagIDs[tagIdx1WithScene]}),
+				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithScene], tagIDs[tagIdx1WithNothing]}),
 				PerformerIDs: models.NewRelatedIDs([]int{performerIDs[performerIdx1WithScene], performerIDs[performerIdx1WithDupName]}),
 			},
 			false,
@@ -174,7 +175,10 @@ func Test_galleryQueryBuilder_Create(t *testing.T) {
 				fileIDs = []models.FileID{s.Files.List()[0].Base().ID}
 			}
 
-			if err := qb.Create(ctx, &s, fileIDs); (err != nil) != tt.wantErr {
+			if err := qb.Create(ctx, &models.CreateGalleryInput{
+				Gallery: &s,
+				FileIDs: fileIDs,
+			}); (err != nil) != tt.wantErr {
 				t.Errorf("galleryQueryBuilder.Create() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 
@@ -270,7 +274,7 @@ func Test_galleryQueryBuilder_Update(t *testing.T) {
 				CreatedAt:    createdAt,
 				UpdatedAt:    updatedAt,
 				SceneIDs:     models.NewRelatedIDs([]int{sceneIDs[sceneIdx1WithPerformer], sceneIDs[sceneIdx1WithStudio]}),
-				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithDupName], tagIDs[tagIdx1WithScene]}),
+				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithScene], tagIDs[tagIdx1WithNothing]}),
 				PerformerIDs: models.NewRelatedIDs([]int{performerIDs[performerIdx1WithScene], performerIDs[performerIdx1WithDupName]}),
 			},
 			false,
@@ -381,7 +385,9 @@ func Test_galleryQueryBuilder_Update(t *testing.T) {
 
 			copy := *tt.updatedObject
 
-			if err := qb.Update(ctx, tt.updatedObject); (err != nil) != tt.wantErr {
+			if err := qb.Update(ctx, &models.UpdateGalleryInput{
+				Gallery: tt.updatedObject,
+			}); (err != nil) != tt.wantErr {
 				t.Errorf("galleryQueryBuilder.Update() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
@@ -481,7 +487,7 @@ func Test_galleryQueryBuilder_UpdatePartial(t *testing.T) {
 					Mode: models.RelationshipUpdateModeSet,
 				},
 				TagIDs: &models.UpdateIDs{
-					IDs:  []int{tagIDs[tagIdx1WithGallery], tagIDs[tagIdx1WithDupName]},
+					IDs:  []int{tagIDs[tagIdx1WithGallery], tagIDs[tagIdx1WithNothing]},
 					Mode: models.RelationshipUpdateModeSet,
 				},
 				PerformerIDs: &models.UpdateIDs{
@@ -506,7 +512,7 @@ func Test_galleryQueryBuilder_UpdatePartial(t *testing.T) {
 				CreatedAt:    createdAt,
 				UpdatedAt:    updatedAt,
 				SceneIDs:     models.NewRelatedIDs([]int{sceneIDs[sceneIdxWithGallery]}),
-				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithDupName], tagIDs[tagIdx1WithGallery]}),
+				TagIDs:       models.NewRelatedIDs([]int{tagIDs[tagIdx1WithGallery], tagIDs[tagIdx1WithNothing]}),
 				PerformerIDs: models.NewRelatedIDs([]int{performerIDs[performerIdx1WithGallery], performerIDs[performerIdx1WithDupName]}),
 			},
 			false,
@@ -604,13 +610,13 @@ func Test_galleryQueryBuilder_UpdatePartialRelationships(t *testing.T) {
 			galleryIDs[galleryIdxWithTwoTags],
 			models.GalleryPartial{
 				TagIDs: &models.UpdateIDs{
-					IDs:  []int{tagIDs[tagIdx1WithDupName], tagIDs[tagIdx1WithImage]},
+					IDs:  []int{tagIDs[tagIdx1WithNothing], tagIDs[tagIdx1WithImage]},
 					Mode: models.RelationshipUpdateModeAdd,
 				},
 			},
 			models.Gallery{
 				TagIDs: models.NewRelatedIDs(append(indexesToIDs(tagIDs, galleryTags[galleryIdxWithTwoTags]),
-					tagIDs[tagIdx1WithDupName],
+					tagIDs[tagIdx1WithNothing],
 					tagIDs[tagIdx1WithImage],
 				)),
 			},
@@ -851,6 +857,79 @@ func Test_galleryQueryBuilder_UpdatePartialRelationships(t *testing.T) {
 			if tt.partial.SceneIDs != nil {
 				assert.ElementsMatch(tt.want.SceneIDs.List(), got.SceneIDs.List())
 				assert.ElementsMatch(tt.want.SceneIDs.List(), s.SceneIDs.List())
+			}
+		})
+	}
+}
+
+func Test_GalleryStore_UpdatePartialCustomFields(t *testing.T) {
+	tests := []struct {
+		name     string
+		id       int
+		partial  models.GalleryPartial
+		expected map[string]interface{} // nil to use the partial
+	}{
+		{
+			"set custom fields",
+			galleryIDs[galleryIdx1WithImage],
+			models.GalleryPartial{
+				CustomFields: models.CustomFieldsInput{
+					Full: testCustomFields,
+				},
+			},
+			nil,
+		},
+		{
+			"clear custom fields",
+			galleryIDs[galleryIdx1WithImage],
+			models.GalleryPartial{
+				CustomFields: models.CustomFieldsInput{
+					Full: map[string]interface{}{},
+				},
+			},
+			nil,
+		},
+		{
+			"partial custom fields",
+			galleryIDs[galleryIdxWithTwoTags],
+			models.GalleryPartial{
+				CustomFields: models.CustomFieldsInput{
+					Partial: map[string]interface{}{
+						"string":    "bbb",
+						"new_field": "new",
+					},
+				},
+			},
+			map[string]interface{}{
+				"int":       int64(2),
+				"real":      1.2,
+				"string":    "bbb",
+				"new_field": "new",
+			},
+		},
+	}
+	for _, tt := range tests {
+		qb := db.Gallery()
+
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+
+			_, err := qb.UpdatePartial(ctx, tt.id, tt.partial)
+			if err != nil {
+				t.Errorf("GalleryStore.UpdatePartial() error = %v", err)
+				return
+			}
+
+			// ensure custom fields are correct
+			cf, err := qb.GetCustomFields(ctx, tt.id)
+			if err != nil {
+				t.Errorf("GalleryStore.GetCustomFields() error = %v", err)
+				return
+			}
+			if tt.expected == nil {
+				assert.Equal(tt.partial.CustomFields.Full, cf)
+			} else {
+				assert.Equal(tt.expected, cf)
 			}
 		})
 	}
@@ -1462,6 +1541,7 @@ func galleryQueryQ(ctx context.Context, t *testing.T, q string, expectedGalleryI
 
 	// no Q should return all results
 	filter.Q = nil
+	filter.PerPage = ptr(-1)
 	galleries, _, err = qb.Query(ctx, nil, &filter)
 	if err != nil {
 		t.Errorf("Error querying gallery: %s", err.Error())
@@ -2783,6 +2863,20 @@ func TestGalleryQuerySorting(t *testing.T) {
 			-1,
 			-1,
 		},
+		{
+			"performer age asc",
+			"performer_age",
+			models.SortDirectionEnumAsc,
+			-1,
+			-1,
+		},
+		{
+			"performer age desc",
+			"performer_age",
+			models.SortDirectionEnumDesc,
+			-1,
+			-1,
+		},
 	}
 
 	qb := db.Gallery()
@@ -2818,6 +2912,163 @@ func TestGalleryQuerySorting(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGalleryQuerySortingPerformerAgeNullHandling(t *testing.T) {
+	runWithRollbackTxn(t, "performer age null handling", func(t *testing.T, ctx context.Context) {
+		assert := assert.New(t)
+
+		knownBirthdate, err := models.ParseDate("1990-01-01")
+		require.NoError(t, err)
+		galleryDate, err := models.ParseDate("2020-01-01")
+		require.NoError(t, err)
+
+		knownPerformer := models.Performer{
+			Name:      "performer-known-birthdate",
+			Birthdate: &knownBirthdate,
+		}
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &knownPerformer}))
+
+		unknownPerformer := models.Performer{
+			Name: "performer-unknown-birthdate",
+		}
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &unknownPerformer}))
+
+		knownOnlyGallery := models.Gallery{
+			Title: "gallery-known-only",
+			Date:  &galleryDate,
+			PerformerIDs: models.NewRelatedIDs([]int{
+				knownPerformer.ID,
+			}),
+		}
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &knownOnlyGallery}))
+
+		mixedGallery := models.Gallery{
+			Title: "gallery-known-and-unknown",
+			Date:  &galleryDate,
+			PerformerIDs: models.NewRelatedIDs([]int{
+				knownPerformer.ID,
+				unknownPerformer.ID,
+			}),
+		}
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &mixedGallery}))
+
+		unknownOnlyGallery := models.Gallery{
+			Title: "gallery-unknown-only",
+			Date:  &galleryDate,
+			PerformerIDs: models.NewRelatedIDs([]int{
+				unknownPerformer.ID,
+			}),
+		}
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &unknownOnlyGallery}))
+
+		findIndex := func(galleries []*models.Gallery, id int) int {
+			for i, g := range galleries {
+				if g.ID == id {
+					return i
+				}
+			}
+			return -1
+		}
+
+		asc := models.SortDirectionEnumAsc
+		sortBy := "performer_age"
+		ascGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &asc})
+		require.NoError(t, err)
+
+		ascKnownOnly := findIndex(ascGot, knownOnlyGallery.ID)
+		ascMixed := findIndex(ascGot, mixedGallery.ID)
+		ascUnknownOnly := findIndex(ascGot, unknownOnlyGallery.ID)
+		assert.NotEqual(-1, ascKnownOnly)
+		assert.NotEqual(-1, ascMixed)
+		assert.NotEqual(-1, ascUnknownOnly)
+		assert.Less(ascKnownOnly, ascUnknownOnly)
+		assert.Less(ascMixed, ascUnknownOnly)
+
+		desc := models.SortDirectionEnumDesc
+		descGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &desc})
+		require.NoError(t, err)
+
+		descKnownOnly := findIndex(descGot, knownOnlyGallery.ID)
+		descMixed := findIndex(descGot, mixedGallery.ID)
+		descUnknownOnly := findIndex(descGot, unknownOnlyGallery.ID)
+		assert.NotEqual(-1, descKnownOnly)
+		assert.NotEqual(-1, descMixed)
+		assert.NotEqual(-1, descUnknownOnly)
+		assert.Less(descKnownOnly, descUnknownOnly)
+		assert.Less(descMixed, descUnknownOnly)
+	})
+}
+
+func TestGalleryQuerySortingPerformerAgeMultiPerformerAggregation(t *testing.T) {
+	runWithRollbackTxn(t, "performer age multi performer aggregation", func(t *testing.T, ctx context.Context) {
+		assert := assert.New(t)
+
+		youngBirthdate, err := models.ParseDate("2000-01-01")
+		require.NoError(t, err)
+		midBirthdate, err := models.ParseDate("1990-01-01")
+		require.NoError(t, err)
+		oldBirthdate, err := models.ParseDate("1980-01-01")
+		require.NoError(t, err)
+		galleryDate, err := models.ParseDate("2020-01-01")
+		require.NoError(t, err)
+
+		young := models.Performer{Name: "performer-young", Birthdate: &youngBirthdate}
+		mid := models.Performer{Name: "performer-mid", Birthdate: &midBirthdate}
+		old := models.Performer{Name: "performer-old", Birthdate: &oldBirthdate}
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &young}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &mid}))
+		require.NoError(t, db.Performer().Create(ctx, &models.CreatePerformerInput{Performer: &old}))
+
+		galleryYoungAndOld := models.Gallery{
+			Title: "gallery-young-and-old",
+			Date:  &galleryDate,
+			PerformerIDs: models.NewRelatedIDs([]int{
+				young.ID,
+				old.ID,
+			}),
+		}
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &galleryYoungAndOld}))
+
+		galleryMidOnly := models.Gallery{
+			Title: "gallery-mid-only",
+			Date:  &galleryDate,
+			PerformerIDs: models.NewRelatedIDs([]int{
+				mid.ID,
+			}),
+		}
+		require.NoError(t, db.Gallery().Create(ctx, &models.CreateGalleryInput{Gallery: &galleryMidOnly}))
+
+		findIndex := func(galleries []*models.Gallery, id int) int {
+			for i, g := range galleries {
+				if g.ID == id {
+					return i
+				}
+			}
+			return -1
+		}
+
+		sortBy := "performer_age"
+		asc := models.SortDirectionEnumAsc
+		ascGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &asc})
+		require.NoError(t, err)
+		ascYoungAndOld := findIndex(ascGot, galleryYoungAndOld.ID)
+		ascMidOnly := findIndex(ascGot, galleryMidOnly.ID)
+		assert.NotEqual(-1, ascYoungAndOld)
+		assert.NotEqual(-1, ascMidOnly)
+		// ASC uses MIN(age), so gallery with youngest performer should come first.
+		assert.Less(ascYoungAndOld, ascMidOnly)
+
+		desc := models.SortDirectionEnumDesc
+		descGot, _, err := db.Gallery().Query(ctx, nil, &models.FindFilterType{Sort: &sortBy, Direction: &desc})
+		require.NoError(t, err)
+		descYoungAndOld := findIndex(descGot, galleryYoungAndOld.ID)
+		descMidOnly := findIndex(descGot, galleryMidOnly.ID)
+		assert.NotEqual(-1, descYoungAndOld)
+		assert.NotEqual(-1, descMidOnly)
+		// DESC uses MAX(age), so gallery with oldest performer should come first.
+		assert.Less(descYoungAndOld, descMidOnly)
+	})
 }
 
 func TestGalleryStore_AddImages(t *testing.T) {
@@ -3035,6 +3286,245 @@ func TestGallerySetAndResetCover(t *testing.T) {
 
 		return nil
 	})
+}
+
+func TestGalleryQueryCustomFields(t *testing.T) {
+	tests := []struct {
+		name        string
+		filter      *models.GalleryFilterType
+		includeIdxs []int
+		excludeIdxs []int
+		wantErr     bool
+	}{
+		{
+			"equals",
+			&models.GalleryFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierEquals,
+						Value:    []any{getGalleryStringValue(galleryIdxWithImage, "custom")},
+					},
+				},
+			},
+			[]int{galleryIdxWithImage},
+			nil,
+			false,
+		},
+		{
+			"not equals",
+			&models.GalleryFilterType{
+				Title: &models.StringCriterionInput{
+					Value:    getGalleryStringValue(galleryIdxWithImage, titleField),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierNotEquals,
+						Value:    []any{getGalleryStringValue(galleryIdxWithImage, "custom")},
+					},
+				},
+			},
+			nil,
+			[]int{galleryIdxWithImage},
+			false,
+		},
+		{
+			"includes",
+			&models.GalleryFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierIncludes,
+						Value:    []any{getGalleryStringValue(galleryIdxWithImage, "custom")[9:]},
+					},
+				},
+			},
+			[]int{galleryIdxWithImage},
+			nil,
+			false,
+		},
+		{
+			"excludes",
+			&models.GalleryFilterType{
+				Title: &models.StringCriterionInput{
+					Value:    getGalleryStringValue(galleryIdxWithImage, titleField),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierExcludes,
+						Value:    []any{getGalleryStringValue(galleryIdxWithImage, "custom")[9:]},
+					},
+				},
+			},
+			nil,
+			[]int{galleryIdxWithImage},
+			false,
+		},
+		{
+			"regex",
+			&models.GalleryFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierMatchesRegex,
+						Value:    []any{".*17_custom"},
+					},
+				},
+			},
+			[]int{galleryIdxWithPerformerTag},
+			nil,
+			false,
+		},
+		{
+			"invalid regex",
+			&models.GalleryFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierMatchesRegex,
+						Value:    []any{"["},
+					},
+				},
+			},
+			nil,
+			nil,
+			true,
+		},
+		{
+			"not matches regex",
+			&models.GalleryFilterType{
+				Title: &models.StringCriterionInput{
+					Value:    getGalleryStringValue(galleryIdxWithPerformerTag, titleField),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierNotMatchesRegex,
+						Value:    []any{".*17_custom"},
+					},
+				},
+			},
+			nil,
+			[]int{galleryIdxWithPerformerTag},
+			false,
+		},
+		{
+			"invalid not matches regex",
+			&models.GalleryFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierNotMatchesRegex,
+						Value:    []any{"["},
+					},
+				},
+			},
+			nil,
+			nil,
+			true,
+		},
+		{
+			"null",
+			&models.GalleryFilterType{
+				Title: &models.StringCriterionInput{
+					Value:    getGalleryStringValue(galleryIdxWithImage, titleField),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "not existing",
+						Modifier: models.CriterionModifierIsNull,
+					},
+				},
+			},
+			[]int{galleryIdxWithImage},
+			nil,
+			false,
+		},
+		{
+			"not null",
+			&models.GalleryFilterType{
+				Title: &models.StringCriterionInput{
+					Value:    getGalleryStringValue(galleryIdxWithImage, titleField),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "string",
+						Modifier: models.CriterionModifierNotNull,
+					},
+				},
+			},
+			[]int{galleryIdxWithImage},
+			nil,
+			false,
+		},
+		{
+			"between",
+			&models.GalleryFilterType{
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierBetween,
+						Value:    []any{0.15, 0.25},
+					},
+				},
+			},
+			[]int{galleryIdxWithImage},
+			nil,
+			false,
+		},
+		{
+			"not between",
+			&models.GalleryFilterType{
+				Title: &models.StringCriterionInput{
+					Value:    getGalleryStringValue(galleryIdxWithImage, titleField),
+					Modifier: models.CriterionModifierEquals,
+				},
+				CustomFields: []models.CustomFieldCriterionInput{
+					{
+						Field:    "real",
+						Modifier: models.CriterionModifierNotBetween,
+						Value:    []any{0.15, 0.25},
+					},
+				},
+			},
+			nil,
+			[]int{galleryIdxWithImage},
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		runWithRollbackTxn(t, tt.name, func(t *testing.T, ctx context.Context) {
+			assert := assert.New(t)
+
+			galleries, _, err := db.Gallery().Query(ctx, tt.filter, nil)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GalleryStore.Query() error = %v, wantErr %v", err, tt.wantErr)
+			}
+
+			if err != nil {
+				return
+			}
+
+			ids := galleriesToIDs(galleries)
+			include := indexesToIDs(galleryIDs, tt.includeIdxs)
+			exclude := indexesToIDs(galleryIDs, tt.excludeIdxs)
+
+			for _, i := range include {
+				assert.Contains(ids, i)
+			}
+			for _, e := range exclude {
+				assert.NotContains(ids, e)
+			}
+		})
+	}
 }
 
 // TODO Count

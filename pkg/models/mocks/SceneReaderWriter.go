@@ -664,13 +664,13 @@ func (_m *SceneReaderWriter) FindByPrimaryFileID(ctx context.Context, fileID mod
 	return r0, r1
 }
 
-// FindDuplicates provides a mock function with given fields: ctx, distance, durationDiff
-func (_m *SceneReaderWriter) FindDuplicates(ctx context.Context, distance int, durationDiff float64) ([][]*models.Scene, error) {
-	ret := _m.Called(ctx, distance, durationDiff)
+// FindDuplicates provides a mock function with given fields: ctx, distance, durationDiff, filter
+func (_m *SceneReaderWriter) FindDuplicates(ctx context.Context, distance int, durationDiff float64, filter *models.SceneFilterType) ([][]*models.Scene, error) {
+	ret := _m.Called(ctx, distance, durationDiff, filter)
 
 	var r0 [][]*models.Scene
-	if rf, ok := ret.Get(0).(func(context.Context, int, float64) [][]*models.Scene); ok {
-		r0 = rf(ctx, distance, durationDiff)
+	if rf, ok := ret.Get(0).(func(context.Context, int, float64, *models.SceneFilterType) [][]*models.Scene); ok {
+		r0 = rf(ctx, distance, durationDiff, filter)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([][]*models.Scene)
@@ -678,8 +678,8 @@ func (_m *SceneReaderWriter) FindDuplicates(ctx context.Context, distance int, d
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, int, float64) error); ok {
-		r1 = rf(ctx, distance, durationDiff)
+	if rf, ok := ret.Get(1).(func(context.Context, int, float64, *models.SceneFilterType) error); ok {
+		r1 = rf(ctx, distance, durationDiff, filter)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -747,6 +747,52 @@ func (_m *SceneReaderWriter) GetCover(ctx context.Context, sceneID int) ([]byte,
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
 		r1 = rf(ctx, sceneID)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetCustomFields provides a mock function with given fields: ctx, id
+func (_m *SceneReaderWriter) GetCustomFields(ctx context.Context, id int) (map[string]interface{}, error) {
+	ret := _m.Called(ctx, id)
+
+	var r0 map[string]interface{}
+	if rf, ok := ret.Get(0).(func(context.Context, int) map[string]interface{}); ok {
+		r0 = rf(ctx, id)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(map[string]interface{})
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
+		r1 = rf(ctx, id)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetCustomFieldsBulk provides a mock function with given fields: ctx, ids
+func (_m *SceneReaderWriter) GetCustomFieldsBulk(ctx context.Context, ids []int) ([]models.CustomFieldMap, error) {
+	ret := _m.Called(ctx, ids)
+
+	var r0 []models.CustomFieldMap
+	if rf, ok := ret.Get(0).(func(context.Context, []int) []models.CustomFieldMap); ok {
+		r0 = rf(ctx, ids)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]models.CustomFieldMap)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, []int) error); ok {
+		r1 = rf(ctx, ids)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -839,6 +885,29 @@ func (_m *SceneReaderWriter) GetManyFileIDs(ctx context.Context, ids []int) ([][
 	var r1 error
 	if rf, ok := ret.Get(1).(func(context.Context, []int) error); ok {
 		r1 = rf(ctx, ids)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetManyIDsByFileIDs provides a mock function with given fields: ctx, fileIDs
+func (_m *SceneReaderWriter) GetManyIDsByFileIDs(ctx context.Context, fileIDs []models.FileID) ([][]int, error) {
+	ret := _m.Called(ctx, fileIDs)
+
+	var r0 [][]int
+	if rf, ok := ret.Get(0).(func(context.Context, []models.FileID) [][]int); ok {
+		r0 = rf(ctx, fileIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([][]int)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context, []models.FileID) error); ok {
+		r1 = rf(ctx, fileIDs)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1183,20 +1252,20 @@ func (_m *SceneReaderWriter) OCountByPerformerID(ctx context.Context, performerI
 	return r0, r1
 }
 
-// OCountByStudioID provides a mock function with given fields: ctx, studioID
-func (_m *SceneReaderWriter) OCountByStudioID(ctx context.Context, studioID int) (int, error) {
-	ret := _m.Called(ctx, studioID)
+// OCountByStudioID provides a mock function with given fields: ctx, studioID, depth
+func (_m *SceneReaderWriter) OCountByStudioID(ctx context.Context, studioID int, depth int) (int, error) {
+	ret := _m.Called(ctx, studioID, depth)
 
 	var r0 int
-	if rf, ok := ret.Get(0).(func(context.Context, int) int); ok {
-		r0 = rf(ctx, studioID)
+	if rf, ok := ret.Get(0).(func(context.Context, int, int) int); ok {
+		r0 = rf(ctx, studioID, depth)
 	} else {
 		r0 = ret.Get(0).(int)
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(context.Context, int) error); ok {
-		r1 = rf(ctx, studioID)
+	if rf, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
+		r1 = rf(ctx, studioID, depth)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -1330,6 +1399,20 @@ func (_m *SceneReaderWriter) SaveActivity(ctx context.Context, sceneID int, resu
 	}
 
 	return r0, r1
+}
+
+// SetCustomFields provides a mock function with given fields: ctx, id, fields
+func (_m *SceneReaderWriter) SetCustomFields(ctx context.Context, id int, fields models.CustomFieldsInput) error {
+	ret := _m.Called(ctx, id, fields)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, int, models.CustomFieldsInput) error); ok {
+		r0 = rf(ctx, id, fields)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
 }
 
 // Size provides a mock function with given fields: ctx

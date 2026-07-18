@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/stashapp/stash/internal/manager/config"
 	"github.com/stashapp/stash/pkg/database"
+	"github.com/stashapp/stash/pkg/fsutil"
 	"github.com/stashapp/stash/pkg/job"
 	"github.com/stashapp/stash/pkg/logger"
 )
@@ -27,6 +29,28 @@ type databaseSchemaInfo struct {
 	CurrentSchemaVersion  uint
 	RequiredSchemaVersion uint
 	StepsRequired         uint
+}
+
+// PreExecute validates the environment before executing the migration.
+// It returns an error if the migration cannot be performed.
+func (s *MigrateJob) PreExecute() error {
+	// ensure backup directory exists and is writable
+	backupDir := s.Config.GetBackupDirectoryPathOrDefault()
+
+	// backends without file backups (postgres) return an empty backup path;
+	// don't try to create a directory derived from the database URL
+	if s.Database.DatabaseBackupPath(backupDir) == "" {
+		return nil
+	}
+
+	if backupDir != "" {
+		if err := fsutil.EnsureDir(backupDir); err != nil {
+			logger.Errorf("error ensuring backup directory exists: %s", err)
+			logger.Warnf("Backup directory (%s) must be modified to a valid directory or removed from the config file", config.BackupDirectoryPath)
+			return fmt.Errorf("error creating backup directory: %w", err)
+		}
+	}
+	return nil
 }
 
 func (s *MigrateJob) Execute(ctx context.Context, progress *job.Progress) error {

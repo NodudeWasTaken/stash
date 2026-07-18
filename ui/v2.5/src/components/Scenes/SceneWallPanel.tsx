@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Form } from "react-bootstrap";
 import * as GQL from "src/core/generated-graphql";
 import { SceneQueue } from "src/models/sceneQueue";
@@ -15,10 +21,16 @@ import TextUtils from "src/utils/text";
 import { useIntl } from "react-intl";
 import { useDragMoveSelect } from "../Shared/GridCard/dragMoveSelect";
 import cx from "classnames";
+import { defaultPreviewVolume } from "src/core/config";
+import {
+  getFirstValidPreviewSource,
+  PreviewMediaType,
+} from "src/utils/wallPreview";
 
 interface IScenePhoto {
   scene: GQL.SlimSceneDataFragment;
   link: string;
+  mediaType: PreviewMediaType;
   onError?: (photo: PhotoProps<IScenePhoto>) => void;
 }
 
@@ -42,6 +54,7 @@ export const SceneWallItem: React.FC<
 
   const { configuration } = useConfigurationContext();
   const playSound = configuration?.interface.soundOnPreview ?? false;
+  const volume = configuration?.ui.previewVolume ?? defaultPreviewVolume;
   const showTitle = configuration?.interface.wallShowTitle ?? false;
 
   const height = Math.min(props.maxHeight, props.photo.height);
@@ -62,7 +75,7 @@ export const SceneWallItem: React.FC<
     divStyle.top = props.top;
   }
 
-  var handleClick = function handleClick(event: React.MouseEvent) {
+  function handleClick(event: React.MouseEvent) {
     if (props.selecting && props.onSelectedChanged) {
       props.onSelectedChanged(!props.selected, event.shiftKey);
       event.preventDefault();
@@ -72,10 +85,35 @@ export const SceneWallItem: React.FC<
     if (props.onClick) {
       props.onClick(event, { index: props.index });
     }
+  }
+
+  const video = props.photo.mediaType === "video";
+  const previewProps = {
+    loading: "lazy",
+    loop: video,
+    muted: !video || !playSound || !active,
+    autoPlay: video,
+    playsInline: video,
+    key: props.photo.key,
+    src: props.photo.src,
+    width,
+    height,
+    alt: props.photo.alt,
+    onMouseEnter: () => setActive(true),
+    onMouseLeave: () => setActive(false),
+    // having a click handler here results in multiple calls to handleClick
+    // due to having the same click handler on the parent div
+    onError: () => {
+      props.photo.onError?.(props.photo);
+    },
   };
 
-  const video = props.photo.src.includes("preview");
-  const ImagePreview = video ? "video" : "img";
+  const videoEl = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (video && videoEl?.current?.volume)
+      videoEl.current.volume = playSound ? volume / 100 : 0;
+  }, [video, playSound, volume]);
 
   const { scene } = props.photo;
   const title = objectTitle(scene);
@@ -111,27 +149,23 @@ export const SceneWallItem: React.FC<
           }}
         />
       )}
-      <ImagePreview
-        loading="lazy"
-        loop={video}
-        muted={!video || !playSound || !active}
-        autoPlay={video}
-        playsInline={video}
-        key={props.photo.key}
-        src={props.photo.src}
-        width={width}
-        height={height}
-        alt={props.photo.alt}
-        onMouseEnter={() => setActive(true)}
-        onMouseLeave={() => setActive(false)}
-        onClick={handleClick}
-        onError={() => {
-          props.photo.onError?.(props.photo);
-        }}
-      />
+      {video ? (
+        <video {...previewProps} ref={videoEl} />
+      ) : (
+        <img {...previewProps} loading="lazy" />
+      )}
       <div className="lineargradient">
         <footer className="wall-item-footer">
-          <Link to={props.photo.link} onClick={(e) => e.stopPropagation()}>
+          <Link
+            to={props.photo.link}
+            onClick={(e) => {
+              if (props.selecting) {
+                e.preventDefault();
+                handleClick(e);
+              }
+              e.stopPropagation();
+            }}
+          >
             {title && (
               <TruncatedText
                 text={title}
@@ -180,6 +214,29 @@ const breakpointZoomHeights = [
   { minWidth: 1400, heights: [160, 240, 300, 480] },
 ];
 
+type FailedSrcMap = Record<string, string[]>; // id to list of failed srcs
+
+function getScenePreviewSources(
+  scene: GQL.SlimSceneDataFragment,
+  previewType?: string | null
+) {
+  if (previewType === "image") {
+    return [{ src: scene.paths.screenshot, mediaType: "image" }] as const;
+  }
+
+  if (previewType === "animation") {
+    return [
+      { src: scene.paths.webp, mediaType: "image" },
+      { src: scene.paths.screenshot, mediaType: "image" },
+    ] as const;
+  }
+
+  return [
+    { src: scene.paths.preview, mediaType: "video" },
+    { src: scene.paths.screenshot, mediaType: "image" },
+  ] as const;
+}
+
 const SceneWall: React.FC<ISceneWallProps> = ({
   scenes,
   sceneQueue,
@@ -189,32 +246,46 @@ const SceneWall: React.FC<ISceneWallProps> = ({
   selecting,
 }) => {
   const history = useHistory();
+  const { configuration } = useConfigurationContext();
+  const previewType = configuration?.interface.wallPlayback;
 
   const containerRef = React.useRef<HTMLDivElement>(null);
 
   const margin = 3;
   const direction = "row";
 
-  const [erroredImgs, setErroredImgs] = useState<string[]>([]);
+  const [erroredImgs, setErroredImgs] = useState<FailedSrcMap>({});
 
-  const handleError = useCallback((photo: PhotoProps<IScenePhoto>) => {
-    setErroredImgs((prev) => [...prev, photo.src]);
-  }, []);
+  const handleError = useCallback(
+    (id: string, photo: PhotoProps<IScenePhoto>) => {
+      setErroredImgs((prev) => ({
+        ...prev,
+        [id]: [...(prev[id] || []), photo.src],
+      }));
+    },
+    []
+  );
 
   useEffect(() => {
-    setErroredImgs([]);
+    const ret: FailedSrcMap = {};
+    scenes.forEach((m) => {
+      ret[m.id] = [];
+    });
+    setErroredImgs(ret);
   }, [scenes]);
 
   const photos: PhotoProps<IScenePhoto>[] = useMemo(() => {
     return scenes.map((s, index) => {
       const { width, height } = getDimensions(s);
+      const previewSource = getFirstValidPreviewSource(
+        getScenePreviewSources(s, previewType),
+        erroredImgs[s.id] || []
+      );
 
       return {
         scene: s,
-        src:
-          s.paths.preview && !erroredImgs.includes(s.paths.preview)
-            ? s.paths.preview!
-            : s.paths.screenshot!,
+        src: previewSource.src,
+        mediaType: previewSource.mediaType,
         link: sceneQueue
           ? sceneQueue.makeLink(s.id, { sceneIndex: index })
           : `/scenes/${s.id}`,
@@ -224,21 +295,21 @@ const SceneWall: React.FC<ISceneWallProps> = ({
         key: s.id,
         loading: "lazy",
         alt: objectTitle(s),
-        onError: handleError,
+        onError: (photo: PhotoProps<IScenePhoto>) => handleError(s.id, photo),
       };
     });
-  }, [scenes, sceneQueue, erroredImgs, handleError]);
+  }, [scenes, previewType, sceneQueue, erroredImgs, handleError]);
 
   const onClick = useCallback(
-    (event, { index }) => {
+    (_event, { index }) => {
       history.push(photos[index].link);
     },
     [history, photos]
   );
 
   function columns(containerWidth: number) {
-    let preferredSize = 300;
-    let columnCount = containerWidth / preferredSize;
+    const preferredSize = 300;
+    const columnCount = containerWidth / preferredSize;
     return Math.round(columnCount);
   }
 

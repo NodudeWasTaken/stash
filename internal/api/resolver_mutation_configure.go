@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/stashapp/stash/internal/manager"
 	"github.com/stashapp/stash/internal/manager/config"
@@ -85,6 +87,8 @@ func (r *mutationResolver) setConfigFloat(key string, value *float64) {
 func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGeneralInput) (*ConfigGeneralResult, error) {
 	c := config.GetInstance()
 
+	// #4709 - allow stash paths even if they do not exist, so that users may configure stash
+	// for disconnected drives or network storage.
 	existingPaths := c.GetStashPaths()
 	if input.Stashes != nil {
 		for _, s := range input.Stashes {
@@ -97,8 +101,13 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 				}
 			}
 			if isNew {
+				s.Path = strings.Trim(s.Path, "\"")
+				s.Path = filepath.Clean(s.Path)
+
+				// if it exists, it must be directory
 				exists, err := fsutil.DirExists(s.Path)
-				if !exists {
+				// allow it to not exist but if it does exist it must be a directory
+				if !exists && !errors.Is(err, fs.ErrNotExist) {
 					return makeConfigGeneralResult(), err
 				}
 			}
@@ -282,11 +291,27 @@ func (r *mutationResolver) ConfigureGeneral(ctx context.Context, input ConfigGen
 	r.setConfigBool(config.PreviewAudio, input.PreviewAudio)
 	r.setConfigInt(config.PreviewSegments, input.PreviewSegments)
 	r.setConfigFloat(config.PreviewSegmentDuration, input.PreviewSegmentDuration)
+	// Validate both marker-preview durations before applying either: 0 disables
+	// the ceiling, so a negative max is rejected rather than silently treated as
+	// disabled; the default is a fallback length and must be positive.
+	if input.MaxMarkerPreviewDuration != nil && *input.MaxMarkerPreviewDuration < 0 {
+		return makeConfigGeneralResult(), errors.New("maxMarkerPreviewDuration must be 0 (disabled) or a positive value")
+	}
+	if input.DefaultMarkerPreviewDuration != nil && *input.DefaultMarkerPreviewDuration <= 0 {
+		return makeConfigGeneralResult(), errors.New("defaultMarkerPreviewDuration must be a positive value")
+	}
+	r.setConfigInt(config.MaxMarkerPreviewDuration, input.MaxMarkerPreviewDuration)
+	r.setConfigInt(config.DefaultMarkerPreviewDuration, input.DefaultMarkerPreviewDuration)
 	r.setConfigString(config.PreviewExcludeStart, input.PreviewExcludeStart)
 	r.setConfigString(config.PreviewExcludeEnd, input.PreviewExcludeEnd)
 	if input.PreviewPreset != nil {
 		c.SetString(config.PreviewPreset, input.PreviewPreset.String())
 	}
+	r.setConfigBool(config.UseCustomSpriteInterval, input.UseCustomSpriteInterval)
+	r.setConfigFloat(config.SpriteInterval, input.SpriteInterval)
+	r.setConfigInt(config.MinimumSprites, input.MinimumSprites)
+	r.setConfigInt(config.MaximumSprites, input.MaximumSprites)
+	r.setConfigInt(config.SpriteScreenshotSize, input.SpriteScreenshotSize)
 
 	r.setConfigBool(config.TranscodeHardwareAcceleration, input.TranscodeHardwareAcceleration)
 	if input.MaxTranscodeSize != nil {
@@ -514,6 +539,8 @@ func (r *mutationResolver) ConfigureInterface(ctx context.Context, input ConfigI
 	}
 
 	r.setConfigBool(config.CustomLocalesEnabled, input.CustomLocalesEnabled)
+
+	r.setConfigBool(config.DisableCustomizations, input.DisableCustomizations)
 
 	if input.DisableDropdownCreate != nil {
 		ddc := input.DisableDropdownCreate

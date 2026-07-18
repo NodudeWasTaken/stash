@@ -7,9 +7,11 @@ import (
 )
 
 type StudioStore interface {
+	customFieldsStore
+
 	All(ctx context.Context) ([]*models.Studio, error)
 	Count(ctx context.Context) (int, error)
-	Create(ctx context.Context, newObject *models.Studio) error
+	Create(ctx context.Context, newObject *models.CreateStudioInput) error
 	Destroy(ctx context.Context, id int) error
 	Find(ctx context.Context, id int) (*models.Studio, error)
 	FindByName(ctx context.Context, name string, nocase bool) (*models.Studio, error)
@@ -25,7 +27,7 @@ type StudioStore interface {
 	Query(ctx context.Context, studioFilter *models.StudioFilterType, findFilter *models.FindFilterType) ([]*models.Studio, int, error)
 	QueryCount(ctx context.Context, studioFilter *models.StudioFilterType, findFilter *models.FindFilterType) (int, error)
 	QueryForAutoTag(ctx context.Context, words []string) ([]*models.Studio, error)
-	Update(ctx context.Context, updatedObject *models.Studio) error
+	Update(ctx context.Context, updatedObject *models.UpdateStudioInput) error
 	UpdateImage(ctx context.Context, studioID int, image []byte) error
 	UpdatePartial(ctx context.Context, input models.StudioPartial) (*models.Studio, error)
 	GetURLs(ctx context.Context, studioID int) ([]string, error)

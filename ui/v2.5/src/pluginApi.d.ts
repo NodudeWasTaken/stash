@@ -15,7 +15,7 @@ declare namespace PluginApi {
     const BulkPerformerUpdateDocument: { [key: string]: any };
     const BulkSceneUpdateDocument: { [key: string]: any };
     const BulkUpdateIdMode: { [key: string]: any };
-    const CircumisedEnum: { [key: string]: any };
+    const CircumcisedEnum: { [key: string]: any };
     const ConfigDataFragmentDoc: { [key: string]: any };
     const ConfigDefaultSettingsDataFragmentDoc: { [key: string]: any };
     const ConfigDlnaDataFragmentDoc: { [key: string]: any };
@@ -666,6 +666,14 @@ declare namespace PluginApi {
     DetailImage: React.FC<any>;
     ExternalLinkButtons: React.FC<any>;
     ExternalLinksButton: React.FC<any>;
+    FilteredGalleryList: React.FC<any>;
+    FilteredGroupList: React.FC<any>;
+    FilteredImageList: React.FC<any>;
+    FilteredPerformerList: React.FC<any>;
+    FilteredSceneList: React.FC<any>;
+    FilteredSceneMarkerList: React.FC<any>;
+    FilteredStudioList: React.FC<any>;
+    FilteredTagList: React.FC<any>;
     FolderSelect: React.FC<any>;
     FrontPage: React.FC<any>;
     GalleryCard: React.FC<any>;
@@ -685,6 +693,7 @@ declare namespace PluginApi {
     GroupCardGrid: React.FC<any>;
     GroupIDSelect: React.FC<any>;
     GroupList: React.FC<any>;
+    GroupPage: React.FC<any>;
     GroupRecommendationRow: React.FC<any>;
     GroupSelect: React.FC<any>;
     GroupSubGroupsPanel: React.FC<any>;
@@ -738,6 +747,7 @@ declare namespace PluginApi {
     "SceneCard.Image": React.FC<any>;
     "SceneCard.Overlays": React.FC<any>;
     "SceneCard.Popovers": React.FC<any>;
+    "SceneCard.SceneSpecs": React.FC<any>;
     SceneCardGrid: React.FC<any>;
     SceneList: React.FC<any>;
     SceneListOperations: React.FC<any>;
@@ -760,6 +770,7 @@ declare namespace PluginApi {
     StudioDetailsPanel: React.FC<any>;
     StudioIDSelect: React.FC<any>;
     StudioList: React.FC<any>;
+    StudioPage: React.FC<any>;
     StudioRecommendationRow: React.FC<any>;
     StudioSelect: React.FC<any>;
     SweatDrops: React.FC<any>;
@@ -773,6 +784,7 @@ declare namespace PluginApi {
     TagCardGrid: React.FC<any>;
     TagLink: React.FC<any>;
     TagList: React.FC<any>;
+    TagPage: React.FC<any>;
     TagRecommendationRow: React.FC<any>;
     TagSelect: React.FC<any>;
     TruncatedText: React.FC<any>;

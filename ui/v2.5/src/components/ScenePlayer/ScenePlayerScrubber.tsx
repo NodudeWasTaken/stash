@@ -28,6 +28,10 @@ interface ISceneSpriteItem {
   time: string;
 }
 
+const scrubberViewportHeight = 120;
+const scrubberTagsHeight = 30;
+const scrubberSpriteHeight = scrubberViewportHeight - scrubberTagsHeight;
+
 export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
   file,
   scene,
@@ -86,16 +90,36 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
   const [spriteItems, setSpriteItems] = useState<ISceneSpriteItem[]>();
 
   useEffect(() => {
-    if (!spriteInfo) return;
+    if (!spriteInfo || spriteInfo.length === 0) return;
     let totalWidth = 0;
+
+    // calculate total width/height of scrubber image so we can scale it
+    const maxX = Math.max(...spriteInfo.map((sprite) => sprite.x + sprite.w));
+    const maxY = Math.max(...spriteInfo.map((sprite) => sprite.y + sprite.h));
+    const spriteWidth = spriteInfo[0].w;
+    const spriteHeight = spriteInfo[0].h;
+    const scale = scrubberSpriteHeight / spriteHeight;
+
+    const w = spriteWidth * scale;
+    const h = scrubberSpriteHeight;
+
+    const sizeX = maxX * scale;
+    const sizeY = maxY * scale;
+
+    // scale sprite dimensions to fit scrubber height, and calculate background position for each sprite
     const newSprites = spriteInfo?.map((sprite, index) => {
-      totalWidth += sprite.w;
-      const left = sprite.w * index;
+      totalWidth += w;
+      const left = w * index;
+
+      const spriteX = sprite.x * scale;
+      const spriteY = sprite.y * scale;
+
       const style = {
-        width: `${sprite.w}px`,
-        height: `${sprite.h}px`,
-        backgroundPosition: `${-sprite.x}px ${-sprite.y}px`,
+        width: `${w}px`,
+        height: `${h}px`,
+        backgroundPosition: `${-spriteX}px ${-spriteY}px`,
         backgroundImage: `url(${sprite.url})`,
+        backgroundSize: `${sizeX}px ${sizeY}px`,
         left: `${left}px`,
       };
       const start = TextUtils.secondsToTimestamp(sprite.start);
@@ -112,7 +136,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
   useEffect(() => {
     const onResize = (entries: ResizeObserverEntry[]) => {
       const newWidth = entries[0].target.clientWidth;
-      if (_width.current != newWidth) {
+      if (_width.current !== newWidth) {
         // set prevTime to NaN to not use a transition when updating the slider position
         prevTime.current = NaN;
         _width.current = newWidth;
@@ -129,23 +153,23 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
     };
   }, []);
 
-  function setLinearTransition() {
-    const slider = sliderEl.current!;
-    slider.style.transition = "500ms linear";
-  }
-
-  function setEaseOutTransition() {
+  const setEaseOutTransition = useCallback(() => {
     const slider = sliderEl.current!;
     slider.style.transition = "333ms ease-out";
-  }
+  }, []);
 
-  function clearTransition() {
+  const clearTransition = useCallback(() => {
     const slider = sliderEl.current!;
     slider.style.transition = "";
-  }
+  }, []);
 
   // Update slider position when player time changes
   useEffect(() => {
+    function setLinearTransition() {
+      const slider = sliderEl.current!;
+      slider.style.transition = "500ms linear";
+    }
+
     if (!scrubWidth || !width) return;
 
     const duration = Number(file.duration);
@@ -156,7 +180,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
     if (Math.abs(newPosition - position.current) < 1) return;
 
     const delta = Math.abs(time - prevTime.current);
-    if (isNaN(delta)) {
+    if (Number.isNaN(delta)) {
       // Don't use a transition on initial time change or after resize
       clearTransition();
     } else if (delta <= 1) {
@@ -168,7 +192,15 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
     prevTime.current = time;
 
     setPosition(newPosition, false);
-  }, [file.duration, setPosition, time, width, scrubWidth]);
+  }, [
+    file.duration,
+    setPosition,
+    time,
+    width,
+    scrubWidth,
+    clearTransition,
+    setEaseOutTransition,
+  ]);
 
   const onMouseUp = useCallback(
     (event: MouseEvent) => {
@@ -201,7 +233,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
       setEaseOutTransition();
       setPosition(newPosition, true);
     },
-    [setPosition]
+    [setPosition, setEaseOutTransition]
   );
 
   const onMouseDown = useCallback((event: MouseEvent) => {
@@ -242,7 +274,7 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
       setPosition(position.current + delta, false);
       lastMouseEvent.current = event;
     },
-    [onScroll, setPosition]
+    [onScroll, setPosition, clearTransition]
   );
 
   useEffect(() => {
@@ -325,9 +357,10 @@ export const ScenePlayerScrubber: React.FC<IScenePlayerScrubberProps> = ({
         <div
           className="scrubber-heatmap"
           style={{
-            backgroundImage: scene.paths.interactive_heatmap
-              ? `url(${scene.paths.interactive_heatmap})`
-              : undefined,
+            backgroundImage:
+              scene.interactive_speed && scene.paths.interactive_heatmap
+                ? `url(${scene.paths.interactive_heatmap})`
+                : undefined,
           }}
         />
         <div ref={indicatorEl} id="scrubber-position-indicator" />

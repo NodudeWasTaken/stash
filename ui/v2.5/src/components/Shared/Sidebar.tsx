@@ -97,15 +97,17 @@ interface IContext {
 
 export const SidebarStateContext = React.createContext<IContext | null>(null);
 
+export interface ISidebarSectionProps {
+  text: React.ReactNode;
+  className?: string;
+  outsideCollapse?: React.ReactNode;
+  onOpen?: () => void;
+  // used to store open/closed state in SidebarStateContext
+  sectionID?: string;
+}
+
 export const SidebarSection: React.FC<
-  PropsWithChildren<{
-    text: React.ReactNode;
-    className?: string;
-    outsideCollapse?: React.ReactNode;
-    onOpen?: () => void;
-    // used to store open/closed state in SidebarStateContext
-    sectionID?: string;
-  }>
+  PropsWithChildren<ISidebarSectionProps>
 > = ({
   className = "",
   text,
@@ -119,7 +121,7 @@ export const SidebarSection: React.FC<
   const openState =
     !contextState || !sectionID
       ? undefined
-      : contextState.sectionOpen[sectionID] ?? undefined;
+      : (contextState.sectionOpen[sectionID] ?? undefined);
 
   function onOpenInternal(open: boolean) {
     if (contextState && sectionID) {
@@ -224,7 +226,7 @@ export function useSidebarState(view?: View) {
       history.replace({
         ...history.location,
         state: {
-          ...(history.location.state as {}),
+          ...(history.location.state as object),
           sectionOpen: newSectionOpen,
         },
       });

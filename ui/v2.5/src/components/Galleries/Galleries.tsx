@@ -4,7 +4,7 @@ import { Helmet } from "react-helmet";
 import { useTitleProps } from "src/hooks/title";
 import Gallery from "./GalleryDetails/Gallery";
 import GalleryCreate from "./GalleryDetails/GalleryCreate";
-import { GalleryList } from "./GalleryList";
+import { FilteredGalleryList } from "./GalleryList";
 import { View } from "../List/views";
 import { LoadingIndicator } from "../Shared/LoadingIndicator";
 import { ErrorMessage } from "../Shared/ErrorMessage";
@@ -20,14 +20,14 @@ const GalleryImage: React.FC<RouteComponentProps<IGalleryImageParams>> = ({
 }) => {
   const { id, index: indexStr } = match.params;
 
-  let index = parseInt(indexStr);
-  if (isNaN(index)) {
+  let index = parseInt(indexStr, 10);
+  if (Number.isNaN(index)) {
     index = 0;
   }
 
   const { data, loading, error } = useFindGalleryImageID(id, index);
 
-  if (isNaN(index)) {
+  if (Number.isNaN(index)) {
     return <Redirect to={`/galleries/${id}`} />;
   }
 
@@ -40,7 +40,7 @@ const GalleryImage: React.FC<RouteComponentProps<IGalleryImageParams>> = ({
 };
 
 const Galleries: React.FC = () => {
-  return <GalleryList view={View.Galleries} />;
+  return <FilteredGalleryList view={View.Galleries} />;
 };
 
 const GalleryRoutes: React.FC = () => {

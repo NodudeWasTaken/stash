@@ -1,5 +1,3 @@
-/* eslint-disable jsx-a11y/control-has-associated-label */
-
 import React from "react";
 import { useIntl } from "react-intl";
 import { Button } from "react-bootstrap";
@@ -17,6 +15,7 @@ import {
   FormatHeight,
   FormatPenisLength,
   FormatWeight,
+  formatYearRange,
 } from "./PerformerList";
 import TextUtils from "src/utils/text";
 import { getCountryByISO } from "src/utils/country";
@@ -88,7 +87,7 @@ export const PerformerListTable: React.FC<IPerformerListTableProps> = (
   );
 
   const AliasesCell = (performer: GQL.PerformerDataFragment) => {
-    let aliases = performer.alias_list ? performer.alias_list.join(", ") : "";
+    const aliases = performer.alias_list ? performer.alias_list.join(", ") : "";
     return (
       <span className="ellips-data" title={aliases}>
         {aliases}
@@ -188,7 +187,7 @@ export const PerformerListTable: React.FC<IPerformerListTableProps> = (
   );
 
   const CareerLengthCell = (performer: GQL.PerformerDataFragment) => (
-    <span className="ellips-data">{performer.career_length}</span>
+    <>{formatYearRange(performer.career_start, performer.career_end) ?? ""}</>
   );
 
   const SceneCountCell = (performer: GQL.PerformerDataFragment) => (
@@ -333,19 +332,19 @@ export const PerformerListTable: React.FC<IPerformerListTableProps> = (
     },
     {
       value: "scene_count",
-      label: intl.formatMessage({ id: "scene_count" }),
+      label: intl.formatMessage({ id: "scenes" }),
       defaultShow: true,
       render: SceneCountCell,
     },
     {
       value: "gallery_count",
-      label: intl.formatMessage({ id: "gallery_count" }),
+      label: intl.formatMessage({ id: "galleries" }),
       defaultShow: true,
       render: GalleryCountCell,
     },
     {
       value: "image_count",
-      label: intl.formatMessage({ id: "image_count" }),
+      label: intl.formatMessage({ id: "images" }),
       defaultShow: true,
       render: ImageCountCell,
     },

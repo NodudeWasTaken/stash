@@ -1,6 +1,6 @@
 import React from "react";
 import * as GQL from "src/core/generated-graphql";
-import { GroupList } from "../GroupList";
+import { FilteredGroupList } from "../GroupList";
 import { ListFilterModel } from "src/models/list-filter/filter";
 import {
   ContainingGroupsCriterionOption,
@@ -10,18 +10,7 @@ import {
   useRemoveSubGroups,
   useReorderSubGroupsMutation,
 } from "src/core/StashService";
-import { ButtonToolbar } from "react-bootstrap";
-import { ListOperationButtons } from "src/components/List/ListOperationButtons";
-import { useListContext } from "src/components/List/ListProvider";
-import {
-  PageSizeSelector,
-  SearchTermInput,
-} from "src/components/List/ListFilter";
-import { useFilter } from "src/components/List/FilterProvider";
-import {
-  IFilteredListToolbar,
-  IItemListOperation,
-} from "src/components/List/FilteredListToolbar";
+import { IItemListOperation } from "src/components/List/FilteredListToolbar";
 import {
   showWhenNoneSelected,
   showWhenSelected,
@@ -32,6 +21,7 @@ import { useToast } from "src/hooks/Toast";
 import { useModal } from "src/hooks/modal";
 import { AddSubGroupsDialog } from "./AddGroupsDialog";
 import { PatchComponent } from "src/patch";
+import { View } from "src/components/List/views";
 
 const useContainingGroupFilterHook = (
   group: Pick<GQL.StudioDataFragment, "id" | "name">,
@@ -64,42 +54,8 @@ const useContainingGroupFilterHook = (
       filter.criteria.push(groupCriterion);
     }
 
-    filter.sortBy = "sub_group_order";
-    filter.sortDirection = GQL.SortDirectionEnum.Asc;
-
     return filter;
   };
-};
-
-const Toolbar: React.FC<IFilteredListToolbar> = ({
-  onEdit,
-  onDelete,
-  operations,
-}) => {
-  const { getSelected, onSelectAll, onSelectNone, onInvertSelection } =
-    useListContext();
-  const { filter, setFilter } = useFilter();
-
-  return (
-    <ButtonToolbar className="filtered-list-toolbar">
-      <div>
-        <SearchTermInput filter={filter} onFilterUpdate={setFilter} />
-      </div>
-      <PageSizeSelector
-        pageSize={filter.itemsPerPage}
-        setPageSize={(size) => setFilter(filter.setPageSize(size))}
-      />
-      <ListOperationButtons
-        onSelectAll={onSelectAll}
-        onSelectNone={onSelectNone}
-        onInvertSelection={onInvertSelection}
-        itemsSelected={getSelected().length > 0}
-        otherOperations={operations}
-        onEdit={onEdit}
-        onDelete={onDelete}
-      />
-    </ButtonToolbar>
-  );
 };
 
 interface IGroupSubGroupsPanel {
@@ -107,18 +63,6 @@ interface IGroupSubGroupsPanel {
   group: GQL.GroupDataFragment;
   extraOperations?: IItemListOperation<GQL.FindGroupsQueryResult>[];
 }
-
-const defaultFilter = (() => {
-  const sortBy = "sub_group_order";
-  const ret = new ListFilterModel(GQL.FilterMode.Groups, undefined, {
-    defaultSortBy: sortBy,
-  });
-
-  // unset the sort by so that its not included in the URL
-  ret.sortBy = undefined;
-
-  return ret;
-})();
 
 export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
   PatchComponent(
@@ -134,8 +78,8 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
       const filterHook = useContainingGroupFilterHook(group);
 
       async function removeSubGroups(
-        result: GQL.FindGroupsQueryResult,
-        filter: ListFilterModel,
+        _result: GQL.FindGroupsQueryResult,
+        _filter: ListFilterModel,
         selectedIds: Set<string>
       ) {
         try {
@@ -203,14 +147,15 @@ export const GroupSubGroupsPanel: React.FC<IGroupSubGroupsPanel> =
       return (
         <>
           {modal}
-          <GroupList
-            defaultFilter={defaultFilter}
+          <FilteredGroupList
+            defaultSort="sub_group_order"
+            manualSortBy="sub_group_order"
             filterHook={filterHook}
             alterQuery={active}
             fromGroupId={group.id}
             otherOperations={otherOperations}
             onMove={onMove}
-            renderToolbar={(props) => <Toolbar {...props} />}
+            view={View.GroupSubGroups}
           />
         </>
       );

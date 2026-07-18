@@ -1,4 +1,3 @@
-/* eslint @typescript-eslint/no-unused-vars: ["error", { "argsIgnorePattern": "^_" }] */
 import { IntlShape } from "react-intl";
 import {
   CriterionModifier,
@@ -12,6 +11,7 @@ import {
 import TextUtils from "src/utils/text";
 import {
   CriterionType,
+  IDuplicationValue,
   IHierarchicalLabelValue,
   ILabeledId,
   INumberValue,
@@ -36,7 +36,8 @@ export type CriterionValue =
   | IStashIDValue
   | IDateValue
   | ITimestampValue
-  | IPhashDistanceValue;
+  | IPhashDistanceValue
+  | IDuplicationValue;
 
 export interface ISavedCriterion<T> {
   modifier: CriterionModifier;
@@ -98,7 +99,7 @@ export abstract class Criterion {
 
 // V = criterion value type
 export abstract class ModifierCriterion<
-  V extends CriterionValue
+  V extends CriterionValue,
 > extends Criterion {
   protected _modifier!: CriterionModifier;
   public get modifier(): CriterionModifier {
@@ -164,7 +165,7 @@ export abstract class ModifierCriterion<
 
     const messageID = !sfwContentMode
       ? this.criterionOption.messageID
-      : this.criterionOption.sfwMessageID ?? this.criterionOption.messageID;
+      : (this.criterionOption.sfwMessageID ?? this.criterionOption.messageID);
 
     return intl.formatMessage(
       { id: "criterion_modifier.format_string" },
@@ -177,7 +178,7 @@ export abstract class ModifierCriterion<
   }
 
   public toQueryParams(): Record<string, unknown> {
-    let encodedCriterion: Record<string, unknown> = {
+    const encodedCriterion: Record<string, unknown> = {
       type: this.criterionOption.type,
       modifier: this.modifier,
     };
@@ -249,6 +250,7 @@ export type InputType =
   | "scene_tags"
   | "groups"
   | "galleries"
+  | "folders"
   | undefined;
 
 type MakeCriterionFn = (
@@ -520,7 +522,7 @@ export class IHierarchicalLabeledIdCriterion extends ModifierCriterion<IHierarch
 
     const messageID = !sfwContentMode
       ? this.criterionOption.messageID
-      : this.criterionOption.sfwMessageID ?? this.criterionOption.messageID;
+      : (this.criterionOption.sfwMessageID ?? this.criterionOption.messageID);
 
     return intl.formatMessage(
       { id },
@@ -1217,5 +1219,56 @@ export class TimestampCriterion extends ModifierCriterion<ITimestampValue> {
     }
 
     return true;
+  }
+}
+
+export class UnsupportedCriterionOption extends StringCriterionOption {
+  constructor(type: string) {
+    super({
+      messageID: "unsupported_criterion",
+      type: type as CriterionType,
+      makeCriterion: () => new UnsupportedCriterion(this),
+    });
+  }
+}
+
+export class UnsupportedCriterion extends StringCriterion {
+  public getLabel(intl: IntlShape): string {
+    const modifierString = ModifierCriterion.getModifierLabel(
+      intl,
+      this.modifier
+    );
+    let valueString = "";
+
+    if (
+      this.modifier !== CriterionModifier.IsNull &&
+      this.modifier !== CriterionModifier.NotNull
+    ) {
+      valueString = this.getLabelValue(intl);
+    }
+
+    return intl.formatMessage(
+      { id: "criterion_modifier.format_string" },
+      {
+        criterion: intl.formatMessage(
+          { id: "criterion.unsupported" },
+          { type: this.criterionOption.type }
+        ),
+        modifierString,
+        valueString,
+      }
+    );
+  }
+
+  public applyToCriterionInput(): void {
+    // do nothing
+  }
+
+  public applyToSavedCriterion(): void {
+    // do nothing
+  }
+
+  public setFromSavedCriterion(): void {
+    // do nothing
   }
 }

@@ -58,7 +58,6 @@ const SelectComponent = <T, IsMulti extends boolean>(
 ) => {
   const {
     selectedOptions,
-    isLoading,
     isDisabled = false,
     creatable = false,
     components,
@@ -101,10 +100,7 @@ const SelectComponent = <T, IsMulti extends boolean>(
   };
 
   return creatable ? (
-    <AsyncCreatableSelect
-      {...componentProps}
-      isDisabled={isLoading || isDisabled}
-    />
+    <AsyncCreatableSelect {...componentProps} isDisabled={isDisabled} />
   ) : (
     <AsyncSelect {...componentProps} />
   );
@@ -137,7 +133,7 @@ export interface IFilterComponentProps<T> extends IFilterProps {
 
 export const FilterSelectComponent = <
   T extends IHasID,
-  IsMulti extends boolean
+  IsMulti extends boolean,
 >(
   props: IFilterValueProps<T> &
     IFilterComponentProps<T> &
@@ -162,7 +158,7 @@ export const FilterSelectComponent = <
           ({
             object: value,
             value: value.id,
-          } as Option<T>)
+          }) as Option<T>
       ) as unknown as OnChangeValue<Option<T>, IsMulti>;
     }
 
@@ -215,7 +211,7 @@ export const FilterSelectComponent = <
 
   const getNewOptionData =
     creatable && getNamedObject
-      ? (inputValue: string, optionLabel: React.ReactNode) => {
+      ? (_inputValue: string, optionLabel: React.ReactNode) => {
           return {
             value: "",
             object: getNamedObject("", optionLabel as string),
@@ -227,7 +223,7 @@ export const FilterSelectComponent = <
     creatable && isValidNewOption
       ? (
           inputValue: string,
-          value: Options<Option<T>>,
+          _value: Options<Option<T>>,
           options: OptionsOrGroups<Option<T>, GroupBase<Option<T>>>
         ) => {
           return isValidNewOption(
@@ -259,4 +255,11 @@ export const FilterSelectComponent = <
 export interface IFilterIDProps<T> {
   ids?: string[];
   onSelect?: (item: T[]) => void;
+}
+
+export function toOption<T extends IHasID>(item: T): Option<T> {
+  return {
+    value: item.id,
+    object: item,
+  };
 }

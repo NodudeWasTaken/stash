@@ -273,6 +273,7 @@ export const ScrapedPerformersRow: React.FC<
         }}
         values={selectValue}
         ageFromDate={ageFromDate}
+        hoverPlacementLabel="bottom"
       />
     );
   }
@@ -395,7 +396,13 @@ export const ScrapedTagsRow: React.FC<
         onSelect={(items) => {
           if (onChangeFn) {
             // map the id back to stored_id
-            onChangeFn(items.map((p) => ({ ...p, stored_id: p.id })));
+            onChangeFn(
+              items.map((p) => ({
+                ...p,
+                stored_id: p.id,
+                alias_list: p.aliases,
+              }))
+            );
           }
         }}
         ids={selectValue}
